@@ -10,7 +10,7 @@ You need an **Allscale account** with **Commerce enabled**:
 
 1. Go to [allscale.io](https://allscale.io) and create an account
 2. Enable **Allscale Commerce** in your dashboard
-3. Set up a **store** and configure your **receiving wallet address** (this is where payments go)
+3. Set up a **store** and configure your **receiving wallet address** (this is where payments go). You can create a **test store** to build and test without real payments — there is no separate sandbox environment
 4. Generate your **API Key** and **API Secret**
 
 > If you need help getting set up, contact the Allscale BD team.

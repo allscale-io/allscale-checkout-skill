@@ -24,7 +24,7 @@ Before writing any code, ask the developer:
 >
 > 1. An **Allscale account** — sign up at [allscale.io](https://allscale.io)
 > 2. **Allscale Commerce** enabled on your account
-> 3. A **store** created in the Allscale Commerce dashboard, with your **receiving wallet address** configured
+> 3. A **store** created in the Allscale Commerce dashboard, with your **receiving wallet address** configured. You can create a **test store** to build and test your integration without taking real payments — there is no separate sandbox environment
 > 4. Your **API Key** and **API Secret** (generated in the dashboard — the secret is shown only once)
 >
 > If you don't have these yet, go to [allscale.io](https://allscale.io) to get set up, or contact the Allscale BD team for help.
@@ -52,7 +52,7 @@ Write a `.env` file:
 ```
 ALLSCALE_API_KEY=<their api key>
 ALLSCALE_API_SECRET=<their api secret>
-ALLSCALE_BASE_URL=https://openapi-sandbox.allscale.io
+ALLSCALE_BASE_URL=https://openapi.allscale.io
 ALLSCALE_CURRENCY=USD
 ```
 
@@ -61,13 +61,12 @@ Also create a `.env.example` file (safe to commit) with placeholder values:
 ```
 ALLSCALE_API_KEY=your_api_key_here
 ALLSCALE_API_SECRET=your_api_secret_here
-ALLSCALE_BASE_URL=https://openapi-sandbox.allscale.io
+ALLSCALE_BASE_URL=https://openapi.allscale.io
 ALLSCALE_CURRENCY=USD
 ```
 
 Tell them:
-- Start with the **sandbox** URL (`openapi-sandbox.allscale.io`) for testing
-- Switch to **production** (`openapi.allscale.io`) when ready for real payments
+- There is one base URL: `https://openapi.allscale.io`. Sandbox has been retired — to build and test without real payments, create a **test store** in the Allscale dashboard and use its API credentials
 - Available currency codes: `USD`, `EUR`, `GBP`, `CAD`, `AUD`, `JPY`, `CNY`, `SGD`, `HKD`
 
 ---
@@ -202,23 +201,39 @@ This is the core payment flow. The server creates a checkout intent, gets back a
   "order_description": "Monthly subscription",
   "user_id": "user_456",
   "user_name": "Tom",
+  "redirect_url": "https://example.com/checkout/allscale",
   "extra": {
     "source": "web"
   }
 }
 ```
 
+For native stable-coin pricing (priced in USDT directly, no FX), use `stable_coin` instead of `currency`:
+
+```json
+{
+  "stable_coin": 1,
+  "amount_cents": 1000,
+  "order_id": "order_124",
+  "redirect_url": "https://example.com/checkout/allscale"
+}
+```
+
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `currency` | int | YES | Fiat currency as integer enum (see table below) |
-| `amount_cents` | int | YES | Amount in cents ($5.00 = 500) |
+| `currency` | int or null | one of* | Fiat currency as integer enum (see table below) |
+| `stable_coin` | int or null | one of* | Stable-coin enum for native stable-coin pricing (see table below). Currently only USDT (`1`) is supported |
+| `amount_cents` | int | YES | Amount in cents. With `currency`: fiat cents ($5.00 = 500). With `stable_coin`: cents of the stable-coin (1000 = 10.00 USDT) |
 | `order_id` | string or null | no | Your internal order ID |
 | `order_description` | string or null | no | Description shown to payer |
 | `user_id` | string or null | no | Your internal user ID |
 | `user_name` | string or null | no | Payer display name |
+| `redirect_url` | string or null | no | Where to send the user after payment completes |
 | `extra` | object or null | no | Arbitrary metadata |
 
-**CRITICAL: `currency` must be an integer, NOT a string. Do NOT send `"USD"` — send `1`.**
+*Exactly one of `currency` or `stable_coin` must be set — not both, not neither. Minimum payment is **0.1 USDT**.
+
+**CRITICAL: `currency` and `stable_coin` must be integers, NOT strings. Do NOT send `"USD"` — send `1`. Same for `stable_coin`: send `1`, not `"USDT"`.**
 
 ### Currency enum (common values):
 
@@ -233,6 +248,14 @@ This is the core payment flow. The server creates a checkout intent, gets back a
 | 57 | HKD |
 | 72 | JPY |
 | 126 | SGD |
+
+### Stable-coin enum:
+
+| Value | Code | Status |
+|---|---|---|
+| 1 | USDT | Supported |
+| 2 | USDC | Disabled |
+| 3 | BUSD | Disabled |
 
 ### Successful response:
 
@@ -253,6 +276,7 @@ This is the core payment flow. The server creates a checkout intent, gets back a
 
 - `checkout_url` — redirect or open this URL for the user to pay
 - `allscale_checkout_intent_id` — save this to poll status later
+- `rate` — fiat→stable-coin exchange rate as a decimal string. `null` when the intent was created with `stable_coin` (native pricing, no FX)
 - Settlement is currently **USDT only** (`stable_coin_type: 1`)
 
 ### What to do with the response:
@@ -298,6 +322,8 @@ No request body. Returns:
 | 1 | CREATED | Intent created, not yet viewed | No |
 | 2 | VIEWED | User opened checkout page | No |
 | 3 | TEMP_WALLET_RECEIVED | Deposit wallet assigned | No |
+| 4 | MANUAL_OPERATION | Pending manual review | No |
+| 5 | SEND_BACK | Refund in progress | No |
 | 10 | ON_CHAIN | Transaction detected, awaiting confirmation | No |
 | 20 | CONFIRMED | Payment confirmed on-chain | Yes |
 
@@ -309,7 +335,26 @@ No request body. Returns:
 
 ### Full intent details (optional):
 
-`GET /v1/checkout_intents/{intent_id}` returns the complete object including `tx_hash`, `tx_from`, `actual_paid_amount`, etc.
+`GET /v1/checkout_intents/{intent_id}` returns the complete object. Key fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `currency` | int or null | `null` when created with `stable_coin` (native pricing) |
+| `currency_symbol` | string or null | e.g., `"USD"`. `null` for native pricing |
+| `currency_rate` | string or null | Decimal string. `null` when no FX conversion |
+| `amount_cents` | int | Original amount in cents |
+| `amount_coins` | string | Stable-coin amount (decimal string) |
+| `coin_symbol` | string | e.g., `"USDT"` |
+| `coin_contract` | string | ERC-20 contract address |
+| `chain_id` | int | EIP-155 chain ID |
+| `status` | int | Status enum (see table above) |
+| `tx_hash` | string or null | On-chain transaction hash |
+| `tx_from` | string or null | Sender wallet address |
+| `tx_to` | string or null | Receiver wallet address |
+| `payment_method_type` | int | `0`=UNKNOWN, `1`=WALLET_SCAN, `2`=WALLET_CONNECT, `3`=ALL_SCALE_PAY |
+| `actual_paid_amount` | string or null | Amount actually received on-chain |
+| `service_fee_amount` | string or null | Platform fee deducted |
+| `net_income_amount` | string or null | After-fee amount to merchant |
 
 ---
 
@@ -355,16 +400,20 @@ Compare with timing-safe equality against the signature in the header.
 | `all_scale_transaction_id` | string | Allscale transaction ID |
 | `all_scale_checkout_intent_id` | string | Checkout intent ID |
 | `webhook_id` | string | Must match X-Webhook-Id header |
-| `amount_cents` | int | Fiat amount in cents |
-| `currency` | int | Currency enum |
-| `currency_symbol` | string | e.g., "USD" |
-| `amount_coins` | string | Stablecoin amount (decimal string) |
-| `coin_symbol` | string | e.g., "USDT" |
+| `amount_cents` | int or null | Fiat amount in cents. `null` for native stable-coin pricing |
+| `currency` | int or null | Currency enum. `null` for native stable-coin pricing |
+| `currency_symbol` | string or null | e.g., `"USD"`. `null` for native stable-coin pricing |
+| `amount_coins` | string | Stable-coin amount (decimal string) |
+| `coin_symbol` | string | e.g., `"USDT"` |
+| `coin_contract_address` | string | ERC-20 contract address |
 | `chain_id` | int | EIP-155 chain ID |
 | `tx_hash` | string | On-chain transaction hash |
 | `tx_from` | string | Sender wallet address |
+| `payment_method_type` | int | `0`=UNKNOWN, `1`=WALLET_SCAN, `2`=WALLET_CONNECT, `3`=ALL_SCALE_PAY |
 | `order_id` | string or null | Your order ID |
 | `user_id` | string or null | Your user ID |
+| `user_name` | string or null | Payer display name |
+| `extra_obj` | object or null | Arbitrary metadata passed at intent creation |
 
 ### Verification checklist:
 1. Validate timestamp is within ±5 minutes
@@ -373,6 +422,45 @@ Compare with timing-safe equality against the signature in the header.
 4. Build canonical string and verify signature
 5. Only process payload after verification passes
 6. Respond with 200 OK
+
+---
+
+## Step 8: Response Signing (Optional)
+
+Response signing lets the client verify each API response came from Allscale and hasn't been tampered with. It is **off by default** — only implement this if the merchant has enabled it on their store (`signed_response = true` in the store config). If not enabled, skip this step.
+
+### Response headers (when enabled):
+
+| Header | Description |
+|---|---|
+| `X-Response-Timestamp` | Server-generated Unix timestamp |
+| `X-Response-Nonce` | Unique per-response nonce |
+| `X-Response-Signature` | `v1=<signature>` |
+| `X-Request-Nonce` | Echo of the request's `X-Nonce` |
+| `X-Request-Id` | Unique request identifier |
+
+### Canonical string:
+
+```
+STATUS_CODE
+PATH
+REQUEST_NONCE
+REQUEST_BODY_SHA256
+RESPONSE_TIMESTAMP
+RESPONSE_NONCE
+RESPONSE_BODY_SHA256
+```
+
+Fields joined with `\n`.
+
+- `REQUEST_BODY_SHA256` — SHA-256 hex of the body you sent (hash of `""` for GET requests).
+- `RESPONSE_BODY_SHA256` — SHA-256 hex of the raw response body bytes, **before** JSON parsing.
+
+### Algorithm:
+
+Same as request signing: `Base64( HMAC-SHA256( api_secret, canonical_string ) )`. Compare timing-safe against `X-Response-Signature` (strip the `v1=` prefix).
+
+Reject the response if verification fails.
 
 ---
 
@@ -401,6 +489,7 @@ If they get `20002` (bad signature), check these in order:
 | 40001 | Rate limit exceeded |
 | 50001 | Checkout intent not found |
 | 90000 | Internal server error |
+| 99999 | Unknown error |
 
 ---
 
