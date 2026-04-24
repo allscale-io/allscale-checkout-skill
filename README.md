@@ -21,13 +21,22 @@ Once you have your API Key and API Secret, you're ready to install the skill and
 
 ## Install
 
-Add the skill to your project:
+In Claude Code, paste this:
+
+> Read and install https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/integrate-allscale.md
+
+Claude will fetch the skill and save it to `.claude/commands/integrate-allscale.md`. That's it.
+
+<details>
+<summary>Prefer shell? Install manually with curl</summary>
 
 ```bash
 mkdir -p .claude/commands
 curl -o .claude/commands/integrate-allscale.md \
   https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/integrate-allscale.md
 ```
+
+</details>
 
 ---
 
