@@ -164,7 +164,7 @@ def sign_request(method, path, query, body, api_secret):
 **Important gotchas:**
 - `BODY_SHA256` must be computed from the **raw body string**, not a parsed/re-serialized object
 - For GET requests (no body), hash the empty string `""`
-- Timestamp must be within ±5 minutes of server time or request is rejected
+- Timestamp must be within ±10 minutes of server time or request is rejected (default; the merchant may configure a smaller window per-store via `replay_window_seconds`)
 - Each nonce can only be used once — always generate a fresh UUID
 
 Write the signing utility in whatever language/framework they're using. Read the API secret from the environment variable `ALLSCALE_API_SECRET` — NEVER hardcode it.
@@ -315,14 +315,15 @@ No request body. Returns:
 
 | Value | Name | Meaning | Terminal? |
 |---|---|---|---|
+| -5 | TIMEOUT | Intent stayed pending too long and expired | Yes |
 | -4 | CANCELED | User canceled | Yes |
 | -3 | UNDERPAID | Paid less than required | Yes |
 | -2 | REJECTED | Failed KYT checks | Yes |
 | -1 | FAILED | Processing error | Yes |
-| 1 | CREATED | Intent created, not yet viewed | No |
-| 2 | VIEWED | User opened checkout page | No |
+| 1 | CREATED | Intent created, not yet opened | No |
+| 2 | PAYING | User is on the checkout page (committed to paying, no funds received yet) | No |
 | 3 | TEMP_WALLET_RECEIVED | Deposit wallet assigned | No |
-| 4 | MANUAL_OPERATION | Pending manual review | No |
+| 4 | PENDING_MANUAL_OPERATION | Pending manual review | No |
 | 5 | SEND_BACK | Refund in progress | No |
 | 10 | ON_CHAIN | Transaction detected, awaiting confirmation | No |
 | 20 | CONFIRMED | Payment confirmed on-chain | Yes |
@@ -472,7 +473,7 @@ If they get `20002` (bad signature), check these in order:
 2. Is the canonical string joined with `\n` (not `\r\n` or other separators)?
 3. Is the path exactly right? `POST /v1/checkout_intents/` needs the **trailing slash**.
 4. Is the query string an empty string `""` (not `undefined`, `null`, or missing)?
-5. Is the timestamp fresh (within ±5 minutes of current UTC time)?
+5. Is the timestamp fresh (within ±10 minutes of current UTC time by default; the merchant store may have configured a smaller `replay_window_seconds`)?
 6. Is the API secret correct with no extra whitespace?
 7. Is the HMAC using SHA-256 and the output encoded as Base64 (not hex)?
 
@@ -488,6 +489,7 @@ If they get `20002` (bad signature), check these in order:
 | 30001 | Forbidden / IP not allowed |
 | 40001 | Rate limit exceeded |
 | 50001 | Checkout intent not found |
+| 50002 | Failed to create checkout intent |
 | 90000 | Internal server error |
 | 99999 | Unknown error |
 
