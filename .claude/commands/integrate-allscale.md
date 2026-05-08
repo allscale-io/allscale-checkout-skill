@@ -24,7 +24,7 @@ Before writing any code, ask the developer:
 >
 > 1. An **Allscale account** — sign up at [allscale.io](https://allscale.io)
 > 2. **Allscale Commerce** enabled on your account
-> 3. A **store** created in the Allscale Commerce dashboard, with your **receiving wallet address** configured. You can create a **test store** to build and test your integration without taking real payments — there is no separate sandbox environment
+> 3. A **store** created in the Allscale Commerce dashboard
 > 4. Your **API Key** and **API Secret** (generated in the dashboard — the secret is shown only once)
 >
 > If you don't have these yet, go to [allscale.io](https://allscale.io) to get set up, or contact the Allscale BD team for help.
