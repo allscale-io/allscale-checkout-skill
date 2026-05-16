@@ -22,7 +22,7 @@ Once you have your API Key and API Secret, you're ready to load the guide into y
 
 ## How It Works
 
-The whole guide is a single Markdown file: [`integrate-allscale.md`](./integrate-allscale.md). Hand it to your AI coding agent and the agent walks you through the integration step by step — verifying credentials, writing code for your stack, testing connectivity, building the checkout flow, and debugging.
+The whole guide is a single Markdown file, hosted at [allscale.io/skill](https://allscale.io/skill). Hand it to your AI coding agent and the agent walks you through the integration step by step — verifying credentials, writing code for your stack, testing connectivity, building the checkout flow, and debugging.
 
 You don't install anything globally. Each agent has its own way of consuming a prompt; pick whichever section below matches your tool.
 
