@@ -2,6 +2,17 @@ You are helping a developer integrate Allscale Checkout into their app or websit
 
 ---
 
+## Who this guide is for
+
+Before you start, figure out which kind of integration this is:
+
+- **Single-tenant** — you're integrating Allscale for your OWN use. Your Allscale credentials live in your app's `.env` and never change at runtime. Steps 1–8 cover everything.
+- **Multi-tenant / platform** — you're building an app where END USERS paste their own Allscale credentials into your UI (e.g. a dashboard where each store owner pastes their own API key + secret). You have one additional obligation: validate every set of pasted credentials before storing them, and re-validate on every rotation. See **Step 4.5**.
+
+Ask the developer which one applies before proceeding.
+
+---
+
 ## CRITICAL SAFETY RULES
 
 You MUST follow these rules at all times:
@@ -180,6 +191,43 @@ Before building the checkout flow, verify auth works. Write a small test script 
 3. `POST /v1/test/post` — send a JSON body, the server echoes it back in `payload`
 
 Run the tests and confirm all three pass before proceeding. If they get error code `20002` (bad signature), help them debug — see the debugging section at the bottom.
+
+If you're building a multi-tenant app where end users paste their own credentials, ALSO read Step 4.5 — you need to wire the `/v1/test/ping` call into your user-onboarding form, not just your one-time dev smoke test.
+
+---
+
+## Step 4.5: Validating credentials from end users (multi-tenant apps only)
+
+Skip this step if you're a single-tenant integrator. If your app accepts an `apiKey` + `apiSecret` from a user — account onboarding, credential rotation, switching environments — you must validate at paste time.
+
+Anywhere your app accepts pasted Allscale credentials, call `GET /v1/test/ping` with those credentials BEFORE writing them to your database. Same signed HTTP call you wrote in Step 4; just invoke it from your form handler.
+
+If the probe fails:
+- Do NOT store the credentials.
+- Do NOT redirect the user to a "setup complete" page.
+- Re-render the form with a specific error message keyed to the failure mode (table below).
+
+**Why this matters:** without upfront validation, bad credentials silently make it into your database. The user thinks setup worked. The error surfaces minutes to days later — at first checkout or first webhook — by which time the user has lost context and may blame your app instead of their own bad paste. Validate at paste time.
+
+### Map probe results to user-facing messages
+
+| Probe result | What to tell the user |
+|---|---|
+| code `20002` (invalid signature) | "The API secret is incorrect — re-copy it from your Allscale dashboard." |
+| code `20001` / HTTP 401 | "The API key isn't recognized." |
+| code `30001` (IP forbidden) | "Allscale's IP allowlist rejected our server. Add your server's outbound IP to your Allscale API settings." |
+| Network timeout (~5s) | "Couldn't reach Allscale — try again in a moment." |
+| Any other failure | "Allscale returned an error. Please try again." |
+
+### Wire the same probe into your credential-rotation handler
+
+A user who pastes a wrong new secret while updating credentials will otherwise silently break payments until the next checkout — and rotation is when this bug bites hardest, because the old (working) credentials get overwritten.
+
+### Anti-patterns to avoid
+
+- Relying on the first checkout attempt as your validation surface — the error arrives too late and the user no longer associates it with their paste.
+- Relying on webhook signature mismatches as your validation surface — same problem, more delayed.
+- Treating the test endpoint as "optional once your signing works" — it's required at every user-facing credential-accept moment.
 
 ---
 
