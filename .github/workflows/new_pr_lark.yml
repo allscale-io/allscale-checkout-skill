@@ -1,0 +1,176 @@
+name: Notify Lark on new PR (target=main)
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build PR message (only if target is main)
+        id: build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request
+
+            if (pr.base.ref !== "main") {
+              console.log(`Skip: PR target is ${pr.base.ref}, not main`)
+              return
+            }
+
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+
+            // ---- strict safety limits ----
+            const MAX_FILES_SHOWN = 10
+            const MAX_BODY_CHARS = 2600
+            const MAX_FILEPATH_CHARS = 140
+
+            // Fetch filenames ONLY (no diff / no line info). GitHub can still
+            // return 422 when PR diff generation is temporarily unavailable.
+            let filenames = []
+            let fileListUnavailable = false
+            try {
+              const files = await github.paginate(
+                github.rest.pulls.listFiles,
+                { owner, repo, pull_number: pr.number, per_page: 100 }
+              )
+              filenames = files.map(f => f.filename)
+            } catch (error) {
+              fileListUnavailable = true
+              core.warning(`Could not fetch PR file list: ${error.message}`)
+            }
+
+            const shorten = (s) =>
+              s.length > MAX_FILEPATH_CHARS ? s.slice(0, MAX_FILEPATH_CHARS - 1) + "…" : s
+
+            const shown = filenames.slice(0, MAX_FILES_SHOWN).map(shorten)
+            const more = Math.max(0, filenames.length - shown.length)
+
+            const fileLines = [
+              ...shown.map(p => `• ${p}`),
+              ...(fileListUnavailable ? ["• File list unavailable from GitHub API"] : []),
+              ...(more > 0 ? [`• …and ${more} more files`] : [])
+            ].join("\n")
+
+            const title = "【Github】 A NEW Checkout Skill PR was submitted"
+
+            let body = [
+              `Repo: ${owner}/${repo}`,
+              `PR: #${pr.number} — ${pr.title}`,
+              `Author: ${pr.user.login}`,
+              `Base → Head: ${pr.base.ref} ← ${pr.head.ref}`,
+              `URL: ${pr.html_url}`,
+              "",
+              `Files changed: ${filenames.length || pr.changed_files || "unknown"}`,
+              "Changed files:",
+              fileLines
+            ].join("\n")
+
+            // 🔐 Final fallback if still too large
+            if (body.length > MAX_BODY_CHARS) {
+              body = [
+                `Repo: ${owner}/${repo}`,
+                `PR: #${pr.number} — ${pr.title}`,
+                `Author: ${pr.user.login}`,
+                `Base → Head: ${pr.base.ref} ← ${pr.head.ref}`,
+                `URL: ${pr.html_url}`,
+                "",
+                `Files changed: ${filenames.length || pr.changed_files || "unknown"}`,
+                "(File list omitted due to size)"
+              ].join("\n")
+            }
+
+            core.setOutput("should_notify", "true")
+            core.setOutput("title", title)
+            core.setOutput("body", body)
+            
+            // --- PR message (title + description/body) ---
+            const MAX_PR_BODY_CHARS = 1600
+            
+            const prTitle = pr.title || "(no title)"
+            const prBodyRaw = (pr.body || "").trim()
+            
+            // Keep it readable + safe
+            const prBody = prBodyRaw.length > MAX_PR_BODY_CHARS
+              ? prBodyRaw.slice(0, MAX_PR_BODY_CHARS - 1) + "…"
+              : prBodyRaw
+            
+            const prMessage = [
+              `Title: ${prTitle}`,
+              "",
+              prBody ? prBody : "(no description)"
+            ].join("\n")
+            
+            core.setOutput("pr_message", prMessage)
+
+      - name: Send Lark message
+        if: steps.build.outputs.should_notify == 'true'
+        env:
+          LARK_WEBHOOK_URL: ${{ secrets.LARK_WEBHOOK_URL }}
+          MENTION_ECHO: ${{ secrets.MENTION_ECHO }}
+          MENTION_ZIHO: ${{ secrets.MENTION_ZIHO }}
+          TITLE: ${{ steps.build.outputs.title }}
+          BODY: ${{ steps.build.outputs.body }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_MESSAGE: ${{ steps.build.outputs.pr_message }}
+        run: |
+          python3 - << 'PY'
+          import json, os, urllib.request
+          
+          url = os.environ["LARK_WEBHOOK_URL"]
+          title = os.environ.get("TITLE", "")
+          body = os.environ.get("BODY", "")
+          pr_url = os.environ.get("PR_URL", "")
+          echo_open_id = os.environ.get("MENTION_ECHO", "").strip()
+          ziho_open_id = os.environ.get("MENTION_ZIHO", "").strip()
+          pr_message = os.environ.get("PR_MESSAGE", "")
+
+          mention = (
+              f'<at id="{echo_open_id}"></at> <at id="{ziho_open_id}"></at>'
+              if echo_open_id and ziho_open_id
+              else ""
+          )
+
+          payload = {
+            "msg_type": "interactive",
+            "card": {
+              "config": {"wide_screen_mode": True},
+              "header": {
+                "template":"orange",
+                "title": {"tag": "plain_text", "content": title}
+              },
+              "elements": [
+                {
+                  "tag": "markdown",
+                  "content": f"{mention}\n\n"
+                            f"```text\n{body}\n```"
+                            f"\n\n**PR Message**\n"
+                            f"{pr_message}"
+                },
+                {
+                  "tag": "action",
+                  "actions": [
+                    {
+                      "tag": "button",
+                      "text": {"tag": "plain_text", "content": "Open PR"},
+                      "type": "primary",
+                      "url": pr_url
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          
+          data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+          req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+          with urllib.request.urlopen(req, timeout=20) as resp:
+            print(resp.read().decode("utf-8"))
+          PY
