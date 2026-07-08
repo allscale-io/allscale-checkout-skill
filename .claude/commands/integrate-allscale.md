@@ -525,11 +525,11 @@ The **Claim Link Auto-Payout** endpoint creates a claim link AND funds it automa
 
 **This endpoint is off by default. You must enable the Payout capability on your store before it will work.**
 
-1. Open your store in the Allscale dashboard → **Store Settings**.
-2. Find the **Payout** (auto-payout) section and **enable it**.
+1. Open your store at [app.allscale.io](https://app.allscale.io) → **Store Settings**.
+2. Go to the **Payout** section and enable **API-Auto-Payout**.
 3. Complete the one-time onboarding it walks you through (it sets up the signing session and a spending-limit policy for your wallet).
 
-Enabling Payout is what grants your API key the `claim_link:auto_payout` permission. **Until you do this, every call to this endpoint fails with a permission error (see the error table below).** If you are getting `403` / scope errors, this is almost always the reason — go back and enable Payout in Store Settings.
+Enabling **API-Auto-Payout** is what grants your API key the `claim_link:auto_payout` permission. **Until you do this, every call to this endpoint fails with a permission error (see the error table below).** If you are getting `403` / scope errors, this is almost always the reason — go back to **Store Settings → Payout** and enable API-Auto-Payout.
 
 Also note:
 - This is a **production capability** — it moves real funds. A sandbox/test-only key cannot use it.
@@ -579,7 +579,7 @@ Signed exactly like every other request (Step 3) — same headers, same HMAC can
     "token_symbol": "USDT",
     "status": "pending_deposit",
     "token": "clk_live_9f8a...c1",
-    "claim_url": "https://claim.allscale.io/clk_live_9f8a...c1",
+    "claim_url": "https://app.allscale.io/claim/clk_live_9f8a...c1",
     "funding_tx_hash": "0xabc...def",
     "funded_amount": "10.50",
     "idempotent_hit": false
@@ -589,7 +589,7 @@ Signed exactly like every other request (Step 3) — same headers, same HMAC can
 }
 ```
 
-- `claim_url` — **deliver this to your recipient over a secure channel.** Anyone with it can claim the funds.
+- `claim_url` — the full public claim URL (on `app.allscale.io`) returned by the API. **Deliver it to your recipient as-is over a secure channel** — don't construct it yourself. Anyone with it can claim the funds.
 - `token` — the raw bearer claim token, returned **once**; treat it as a secret.
 - `funding_tx_hash` / `funded_amount` — proof this call funded the link.
 - `idempotent_hit` — `true` when the call matched a prior `reference_id` and returned the existing link (no new debit). On an idempotent replay, `token` / `funding_tx_hash` / `funded_amount` may be `null`.
@@ -600,15 +600,15 @@ Treat **any** non-zero `code` as a failure, and always surface `error` + `reques
 
 | Code | HTTP | What actually went wrong | What to do |
 |---|---|---|---|
-| Scope forbidden — "not authorized for this capability" (`30002`) | 403 | **Payout is not enabled on your store**, so your key doesn't carry the payout permission. | Go to **Store Settings → enable Payout** and finish onboarding. This is the #1 cause. |
-| Auto-payout disabled (`50104`) | 403 | The payout capability is off for this key/environment (e.g. a sandbox/test key, or the feature isn't live yet). | Use a production key on a store where Payout is enabled. |
-| Create / auto-fund failed (`50103`) | 400 | The link couldn't be funded — most commonly **your wallet doesn't hold enough** of the stablecoin to cover amount + fees; also signing-session / policy not ready. | Top up your wallet, or re-check that Payout onboarding completed. The `reason` field says which. |
+| Scope forbidden — "not authorized for this capability" (`30002`) | 403 | **Payout is not enabled on your store**, so your key doesn't carry the payout permission. | Go to **Store Settings → Payout → enable API-Auto-Payout** and finish onboarding. This is the #1 cause. |
+| Auto-payout disabled (`50104`) | 403 | The payout capability is off for this key/environment (e.g. a sandbox/test key, or the feature isn't live yet). | Use a production key on a store where API-Auto-Payout is enabled. |
+| Create / auto-fund failed (`50103`) | 400 | The link couldn't be funded — most commonly **your wallet doesn't hold enough** of the stablecoin to cover amount + fees; also signing-session / policy not ready. | Top up your wallet, or re-check that API-Auto-Payout onboarding completed. The `reason` field says which. |
 | Validation error (`10001`) | 400 / 422 | Bad input — missing/blank `reference_id`, `amount` not positive or too precise, wrong field types (sending `"USDT"` instead of the integer), unsupported coin. | Fix the field named in the error. |
 | Duplicate `reference_id` in flight (`50105`) | 409 | A concurrent create for the **same** `reference_id` is still running. | Wait and re-poll with the same `reference_id`; don't spin up a parallel call. |
 | Missing/invalid auth (`20001` / `20002`) | 401 | Auth headers missing or signature wrong. | See the signing debug section below. |
 | Rate limited (`40001`) | 429 | Too many requests. | Back off and retry. |
 
-**The single most common mistake** is calling this endpoint before enabling Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go enable Payout first.
+**The single most common mistake** is calling this endpoint before enabling API-Auto-Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go to **Store Settings → Payout** and enable API-Auto-Payout first.
 
 
 ---
@@ -641,7 +641,7 @@ If they get `20002` (bad signature), check these in order:
 | 50103 | Claim link auto-payout create/fund failed (e.g. wallet balance too low) |
 | 50104 | Auto-payout disabled for this key/environment |
 | 50105 | Duplicate reference_id create in progress |
-| 30002 | Scope forbidden — store lacks the payout permission (enable Payout in Store Settings) |
+| 30002 | Scope forbidden — store lacks the payout permission (Store Settings → Payout → enable API-Auto-Payout) |
 | 90000 | Internal server error |
 | 99999 | Unknown error |
 
