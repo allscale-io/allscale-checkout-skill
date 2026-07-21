@@ -97,7 +97,8 @@ The guide walks any agent through:
    - Payment status polling
    - Webhook signature verification
    - Response signing (optional)
-5. **Debugging** if anything goes wrong (signature mismatches, enum issues, etc.)
+   - Claim Link Auto-Payout — sending money **out** (payouts / disbursements), including the required **Store Settings → Payout → enable API-Auto-Payout** step
+5. **Debugging** if anything goes wrong (signature mismatches, enum issues, permission/scope errors, etc.)
 
 ---
 

@@ -513,6 +513,106 @@ Reject the response if verification fails.
 
 ---
 
+## Step 9: Claim Link Auto-Payout (Optional — sending money out)
+
+Everything above is about **taking** money (checkout). This step is the reverse: **paying money out** to a recipient with a single API call — a payout, disbursement, refund, reward, etc.
+
+The **Claim Link Auto-Payout** endpoint creates a claim link AND funds it automatically from your own custodied wallet in one call, then returns a shareable **claim URL** you deliver to the recipient. There is no manual on-chain deposit step — AllScale funds the link for you.
+
+> If instead you want the sender-funded flow (you deposit into the link's pool wallet yourself), that's a different payout path — not covered here.
+
+### ⚠️ Prerequisite: turn on Payout in Store Settings FIRST
+
+**This endpoint is off by default. You must enable the Payout capability on your store before it will work.**
+
+1. Open your store at [app.allscale.io](https://app.allscale.io) → **Store Settings**.
+2. Go to the **Payout** section and enable **API-Auto-Payout**.
+3. Complete the one-time onboarding it walks you through (it sets up the signing session and a spending-limit policy for your wallet).
+
+Enabling **API-Auto-Payout** is what grants your API key the `claim_link:auto_payout` permission. **Until you do this, every call to this endpoint fails with a permission error (see the error table below).** If you are getting `403` / scope errors, this is almost always the reason — go back to **Store Settings → Payout** and enable API-Auto-Payout.
+
+Also note:
+- This is a **production capability** — it moves real funds. A sandbox/test-only key cannot use it.
+- Funding draws from **your** wallet, so it must hold enough of the stablecoin to cover the payout **amount plus fees**. (Gas is sponsored — you don't need to hold native gas.)
+
+### Endpoint: `POST /v1/claim_link_auto_payouts`
+
+Signed exactly like every other request (Step 3) — same headers, same HMAC canonical string.
+
+### Request body:
+
+```json
+{
+  "amount": "10.50",
+  "stable_coin": 1,
+  "chain": 5,
+  "receiver_email": "recipient@example.com",
+  "sender_display_name": "Acme Payouts",
+  "sender_message": "Your payout is ready",
+  "reference_id": "payout_0001"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `amount` | string | YES | Recipient's claimable amount in **token units** as a **string** (e.g. `"10.50"`), not a JSON number. Must be positive and no finer than the token's decimals. |
+| `stable_coin` | int | YES | Stablecoin enum (same integer enums as checkout). |
+| `chain` | int | YES | Chain enum (same integer enums as the rest of the API). |
+| `receiver_email` | string \| null | no | If set, AllScale emails the claim invite to the recipient. |
+| `sender_display_name` | string \| null | no | Shown to the recipient as the sender (max 100 chars). |
+| `sender_message` | string \| null | no | Short note shown to the recipient (max 500 chars). |
+| `reference_id` | string | YES* | **Your idempotency key.** Re-sending the same `reference_id` returns the original link instead of creating a second one. Required by default. |
+
+**About `reference_id` — do not skip it.** This call is **synchronous**: it blocks (up to ~90s) while the funding transaction settles. The most likely failure you'll hit is a client-side timeout followed by a retry — and without a stable `reference_id`, that retry creates a **second** link and a **second** debit. With it, retries are safe: the second call just returns the first link (`idempotent_hit: true`), no double-charge.
+
+> Same rules as checkout: `amount` is a **string**; `stable_coin` / `chain` are **integers**, not `"USDT"` / `"BASE"`.
+
+### Successful response:
+
+```json
+{
+  "code": 0,
+  "payload": {
+    "claim_link_id": "665b2f3d0d2d9c0a1b2c3d4e",
+    "reference_id": "payout_0001",
+    "amount": "10.50",
+    "token_symbol": "USDT",
+    "status": "pending_deposit",
+    "token": "clk_live_9f8a...c1",
+    "claim_url": "https://app.allscale.io/claim/clk_live_9f8a...c1",
+    "funding_tx_hash": "0xabc...def",
+    "funded_amount": "10.50",
+    "idempotent_hit": false
+  },
+  "error": null,
+  "request_id": "req_xxxxx"
+}
+```
+
+- `claim_url` — the full public claim URL (on `app.allscale.io`) returned by the API. **Deliver it to your recipient as-is over a secure channel** — don't construct it yourself. Anyone with it can claim the funds.
+- `token` — the raw bearer claim token, returned **once**; treat it as a secret.
+- `funding_tx_hash` / `funded_amount` — proof this call funded the link.
+- `idempotent_hit` — `true` when the call matched a prior `reference_id` and returned the existing link (no new debit). On an idempotent replay, `token` / `funding_tx_hash` / `funded_amount` may be `null`.
+
+### If it errors, here's why (read this before filing a bug)
+
+Treat **any** non-zero `code` as a failure, and always surface `error` + `request_id` when asking for support.
+
+| Code | HTTP | What actually went wrong | What to do |
+|---|---|---|---|
+| Scope forbidden — "not authorized for this capability" (`30002`) | 403 | **Payout is not enabled on your store**, so your key doesn't carry the payout permission. | Go to **Store Settings → Payout → enable API-Auto-Payout** and finish onboarding. This is the #1 cause. |
+| Auto-payout disabled (`50104`) | 403 | The payout capability is off for this key/environment (e.g. a sandbox/test key, or the feature isn't live yet). | Use a production key on a store where API-Auto-Payout is enabled. |
+| Create / auto-fund failed (`50103`) | 400 | The link couldn't be funded — most commonly **your wallet doesn't hold enough** of the stablecoin to cover amount + fees; also signing-session / policy not ready. | Top up your wallet, or re-check that API-Auto-Payout onboarding completed. The `reason` field says which. |
+| Validation error (`10001`) | 400 / 422 | Bad input — missing/blank `reference_id`, `amount` not positive or too precise, wrong field types (sending `"USDT"` instead of the integer), unsupported coin. | Fix the field named in the error. |
+| Duplicate `reference_id` in flight (`50105`) | 409 | A concurrent create for the **same** `reference_id` is still running. | Wait and re-poll with the same `reference_id`; don't spin up a parallel call. |
+| Missing/invalid auth (`20001` / `20002`) | 401 | Auth headers missing or signature wrong. | See the signing debug section below. |
+| Rate limited (`40001`) | 429 | Too many requests. | Back off and retry. |
+
+**The single most common mistake** is calling this endpoint before enabling API-Auto-Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go to **Store Settings → Payout** and enable API-Auto-Payout first.
+
+
+---
+
 ## Debugging Signature Errors (Error Code 20002)
 
 If they get `20002` (bad signature), check these in order:
@@ -538,6 +638,10 @@ If they get `20002` (bad signature), check these in order:
 | 40001 | Rate limit exceeded |
 | 50001 | Checkout intent not found |
 | 50002 | Failed to create checkout intent |
+| 50103 | Claim link auto-payout create/fund failed (e.g. wallet balance too low) |
+| 50104 | Auto-payout disabled for this key/environment |
+| 50105 | Duplicate reference_id create in progress |
+| 30002 | Scope forbidden — store lacks the payout permission (Store Settings → Payout → enable API-Auto-Payout) |
 | 90000 | Internal server error |
 | 99999 | Unknown error |
 
