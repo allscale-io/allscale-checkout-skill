@@ -5,7 +5,7 @@ Portable, agent-agnostic prompts that guide an AI coding agent through working w
 | Guide | Use it when you want to… | Load it from |
 |---|---|---|
 | **Checkout integration** | Take payments **inside your own app or website** — [Allscale Checkout](https://www.allscale.io/products/checkout) via the HMAC-signed API | [allscale.io/skill](https://allscale.io/skill) |
-| **CLI setup** | Drive Allscale **from a terminal or an agent** — invoices, claim links, wallets, payouts — no app to build | [the raw file](https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/setup-allscale-cli.md) |
+| **CLI setup** | Drive Allscale **from a terminal or an agent** — invoices, claim links, wallets, payouts — no app to build | [allscale.io/cliskill](https://allscale.io/cliskill) |
 
 Not sure which? If you are writing code that charges your users, you want **Checkout integration**. If you want to run Allscale operations yourself or hand that ability to an agent, you want **CLI setup**.
 
@@ -94,18 +94,18 @@ Open the file in your agent of choice and tell it to follow the instructions.
 
 Same idea, different guide. Paste this into your agent's chat:
 
-> Read and follow the instructions at https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/setup-allscale-cli.md
+> Read and follow the instructions at https://allscale.io/cliskill
 
 **Claude Code (as a slash command):**
 
-> Read https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/setup-allscale-cli.md and save it to `.claude/commands/setup-allscale-cli.md`
+> Read https://allscale.io/cliskill and save it to `.claude/commands/setup-allscale-cli.md`
 
 Then invoke it with `/setup-allscale-cli`.
 
 **Or fetch it directly:**
 
 ```bash
-curl -L -o setup-allscale-cli.md https://raw.githubusercontent.com/allscale-io/allscale-checkout-skill/main/.claude/commands/setup-allscale-cli.md
+curl -L -o setup-allscale-cli.md https://allscale.io/cliskill
 ```
 
 ### What the CLI guide covers
