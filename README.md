@@ -97,7 +97,8 @@ The guide walks any agent through:
    - Payment status polling
    - Webhook signature verification
    - Response signing (optional)
-   - Claim Link Auto-Payout — sending money **out** (payouts / disbursements), including the required **Store Settings → Payout → enable API-Auto-Payout** step
+   - Claim Link Auto-Payout — sending money **out** (payouts / disbursements), including the required **Store Settings → Payout → enable API-Auto-Payout** step and the **14-day auto-refund** your ledger has to expect
+   - Claim-link webhooks (`claimed` / `expired` / `cancelled`) — there is no status endpoint to poll
 5. **Debugging** if anything goes wrong (signature mismatches, enum issues, permission/scope errors, etc.)
 
 ---
