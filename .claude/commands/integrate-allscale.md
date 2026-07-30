@@ -519,6 +519,22 @@ Everything above is about **taking** money (checkout). This step is the reverse:
 
 The **Claim Link Auto-Payout** endpoint creates a claim link AND funds it automatically from your own custodied wallet in one call, then returns a shareable **claim URL** you deliver to the recipient. There is no manual on-chain deposit step — AllScale funds the link for you.
 
+Claim Link is **live in production**. One endpoint creates and funds a link: `POST /v1/claim_link_auto_payouts`.
+
+**There is no GET endpoint for a claim link's status.** Do not build a polling loop against one. Terminal state arrives by **webhook** — see *Lifecycle* below.
+
+### Lifecycle — read this before you write any ledger code
+
+A link moves through: created → funded → the recipient claims it, or it comes back to you. Money leaving your wallet is **not** the end of the story, and **every one of these endings happens without your app doing anything**:
+
+| Ending | What happens | Your app must |
+|---|---|---|
+| **Claimed** | The recipient took the funds. `claimed` webhook, with `claim_tx_hash`. | Mark the payout settled |
+| **Expired — 14 days unclaimed** | AllScale **automatically refunds the full amount to you**. `expired` webhook, with `refund_tx_hash`. | **Expect the money back and reconcile it.** This is the ending teams forget; if your ledger treats the debit as final you will drift |
+| **Cancelled** | The link was claimed back by the sender before the recipient took it. `cancelled` webhook, with `refund_tx_hash`. | Reconcile the refund. **Handle this event even though your integration does not trigger it** — it can happen outside your API calls |
+
+The recipient pays **no gas** and needs **no AllScale account** — they can claim into a fresh AllScale wallet or paste their own `0x` address. Stablecoins are **USDT / USDC on EVM chains**.
+
 > If instead you want the sender-funded flow (you deposit into the link's pool wallet yourself), that's a different payout path — not covered here.
 
 ### ⚠️ Prerequisite: turn on Payout in Store Settings FIRST
@@ -532,8 +548,10 @@ The **Claim Link Auto-Payout** endpoint creates a claim link AND funds it automa
 Enabling **API-Auto-Payout** is what grants your API key the `claim_link:auto_payout` permission. **Until you do this, every call to this endpoint fails with a permission error (see the error table below).** If you are getting `403` / scope errors, this is almost always the reason — go back to **Store Settings → Payout** and enable API-Auto-Payout.
 
 Also note:
-- This is a **production capability** — it moves real funds. A sandbox/test-only key cannot use it.
+- **A `*` wildcard scope does NOT grant this.** `claim_link:auto_payout` has to be on the key **explicitly**. If your key is wildcard-scoped and you still get `403`, this is why — it is not a bug.
+- **Sandbox keys are hard-blocked** on both endpoints, create and cancel, because both mutate live money state. A sandbox key cannot be used to rehearse this flow at all.
 - Funding draws from **your** wallet, so it must hold enough of the stablecoin to cover the payout **amount plus fees**. (Gas is sponsored — you don't need to hold native gas.)
+- The authorization you set up in onboarding carries a **spending policy with limits and an expiry** — per-transaction ceiling, total budget, validity window. When it lapses or a limit is hit, calls start failing and the fix is to re-authorize, not to retry. The error tells you which — see `reason_code` below.
 
 ### Endpoint: `POST /v1/claim_link_auto_payouts`
 
@@ -561,9 +579,11 @@ Signed exactly like every other request (Step 3) — same headers, same HMAC can
 | `receiver_email` | string \| null | no | If set, AllScale emails the claim invite to the recipient. |
 | `sender_display_name` | string \| null | no | Shown to the recipient as the sender (max 100 chars). |
 | `sender_message` | string \| null | no | Short note shown to the recipient (max 500 chars). |
-| `reference_id` | string | YES* | **Your idempotency key.** Re-sending the same `reference_id` returns the original link instead of creating a second one. Required by default. |
+| `reference_id` | string | **YES** | **Your idempotency key — always required.** Re-sending it with the *same* parameters returns the original link instead of creating a second one. Uniqueness is scoped **per store**, not per business: two stores under one business can each number from `order-1` without colliding. Reusing it with *different* `amount` / `chain` / `stable_coin` is a `409` (see `50106`) rather than a silent replay. |
 
 **About `reference_id` — do not skip it.** This call is **synchronous**: it blocks (up to ~90s) while the funding transaction settles. The most likely failure you'll hit is a client-side timeout followed by a retry — and without a stable `reference_id`, that retry creates a **second** link and a **second** debit. With it, retries are safe: the second call just returns the first link (`idempotent_hit: true`), no double-charge.
+
+Generate it from something stable on your side — your own payout row id, not a timestamp or a random value per attempt. A retry has to send the **same** string to be safe.
 
 > Same rules as checkout: `amount` is a **string**; `stable_coin` / `chain` are **integers**, not `"USDT"` / `"BASE"`.
 
@@ -601,14 +621,46 @@ Treat **any** non-zero `code` as a failure, and always surface `error` + `reques
 | Code | HTTP | What actually went wrong | What to do |
 |---|---|---|---|
 | Scope forbidden — "not authorized for this capability" (`30002`) | 403 | **Payout is not enabled on your store**, so your key doesn't carry the payout permission. | Go to **Store Settings → Payout → enable API-Auto-Payout** and finish onboarding. This is the #1 cause. |
-| Auto-payout disabled (`50104`) | 403 | The payout capability is off for this key/environment (e.g. a sandbox/test key, or the feature isn't live yet). | Use a production key on a store where API-Auto-Payout is enabled. |
-| Create / auto-fund failed (`50103`) | 400 | The link couldn't be funded — most commonly **your wallet doesn't hold enough** of the stablecoin to cover amount + fees; also signing-session / policy not ready. | Top up your wallet, or re-check that API-Auto-Payout onboarding completed. The `reason` field says which. |
+| Auto-payout disabled (`50104`) | 403 | Auto-payout is not available for this key — the capability is off for the store, **or the key is a sandbox key** (sandbox is hard-blocked). | Use a production key on a store where API-Auto-Payout is enabled. |
+| Create / auto-fund failed (`50103`) | 400 | The payout could not be **signed**. Always **pre-broadcast**: no funds moved and the budget reservation was released. | **Branch on `error.details.reason_code`** — see the table below. |
 | Validation error (`10001`) | 400 / 422 | Bad input — missing/blank `reference_id`, `amount` not positive or too precise, wrong field types (sending `"USDT"` instead of the integer), unsupported coin. | Fix the field named in the error. |
 | Duplicate `reference_id` in flight (`50105`) | 409 | A concurrent create for the **same** `reference_id` is still running. | Wait and re-poll with the same `reference_id`; don't spin up a parallel call. |
+| `reference_id` reused with different params (`50106`) | 409 | The same `reference_id` arrived with a different `amount` / `chain` / `stable_coin` than the original. Returning the old link silently would hide a bug on your side, so this is an explicit conflict. `details` carries **both** parameter sets so you can see what diverged. | Either resend the **original** params (idempotent replay) or use a **new** `reference_id` (a genuinely new payout). |
 | Missing/invalid auth (`20001` / `20002`) | 401 | Auth headers missing or signature wrong. | See the signing debug section below. |
 | Rate limited (`40001`) | 429 | Too many requests. | Back off and retry. |
 
-**The single most common mistake** is calling this endpoint before enabling API-Auto-Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go to **Store Settings → Payout** and enable API-Auto-Payout first.
+#### `50103` — branch on `reason_code`, never on `reason`
+
+`error.details.reason_code` is a **stable machine-readable** discriminator. `error.details.reason` is human prose whose wording **can change** — do not string-match it.
+
+```json
+{"code": 50103, "payload": null, "error": {"message": "Claim link auto-payout create failed.",
+  "details": {"reason": "<prose>", "reason_code": "session_expired", "plutus_code": 8148}}}
+```
+
+| `reason_code` | What it means | What to do |
+|---|---|---|
+| `session_expired` | No usable auto-payout session — it lapsed or was cleared | **Re-authorize**, then retry. Retrying without re-authorizing will keep failing |
+| `policy_denied` | The wallet's auto-payout policy rejected the signature. **Not necessarily an amount problem** — the policy gates chain, verifying contract, token, sponsor *and* the per-transaction ceiling, and the signer does not report which check failed | Check the policy and its limits; re-authorize if needed. Do not assume "top up the wallet" |
+| `signer_error` | Transient signer/infrastructure fault, or a re-authorization that completed concurrently | Retry with the **same** `reference_id` — it is idempotent and cannot double-pay |
+
+`reason_code` is absent when no category applies.
+
+**The single most common mistake** is calling this endpoint before enabling API-Auto-Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go to **Store Settings → Payout** and enable API-Auto-Payout first. The second most common is a wildcard-scoped key: `claim_link:auto_payout` must be granted **explicitly**.
+
+### Webhook: the terminal state
+
+Claim links have **no status endpoint**. Set `claim_link_webhook_url` on your store and handle three events, signed with the same scheme as checkout webhooks (`X-Webhook-Id`, `X-Webhook-Timestamp`, `X-Webhook-Nonce`, `X-Webhook-Signature` — verify exactly as in Step 7):
+
+| `event` | Carries | Meaning |
+|---|---|---|
+| `claimed` | `claim_tx_hash` | Recipient took the funds |
+| `expired` | `refund_tx_hash` | 14 days unclaimed — **full amount refunded to you** |
+| `cancelled` | `refund_tx_hash` | Your cancel settled — refunded |
+
+Payload also carries `webhook_id`, `claim_link_id`, `reference_id`, `occurred_at` (ISO-8601 UTC), `amount` (decimal string) and `token_symbol`.
+
+**Reconcile on `reference_id`.** It is the only field that ties the event back to your own payout row, and it is the same key you used to make the call idempotent.
 
 
 ---
