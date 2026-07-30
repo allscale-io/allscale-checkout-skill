@@ -143,7 +143,7 @@ The **Checkout integration** guide walks any agent through:
 
 ## Security
 
-The guide instructs the agent to follow these rules to keep your credentials safe:
+The **Checkout integration** guide instructs the agent to follow these rules to keep your credentials safe:
 
 - API Secret is **never written into source code** — only into `.env` files
 - `.env` is always added to `.gitignore` before credentials are stored
