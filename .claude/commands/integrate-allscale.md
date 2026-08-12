@@ -56,7 +56,20 @@ Then immediately proceed to set up their `.env` file safely (Step 1).
 
 1. Check if `.gitignore` exists. If not, create it.
 2. Check if `.env` is listed in `.gitignore`. If not, add it.
-3. Only THEN create or update the `.env` file with their credentials.
+3. Check whether `.env` is **already tracked** by git:
+
+   ```bash
+   git ls-files --error-unmatch .env
+   ```
+
+   If that succeeds, the file is already in the index and **`.gitignore` will not help** — gitignore only applies to untracked files, so every future commit would keep publishing the secret. Untrack it first, then tell the developer:
+
+   ```bash
+   git rm --cached .env
+   ```
+
+   If `.env` was ever *committed*, the secret is in the repo history and is compromised even after this. Tell them plainly: rotate the API Secret in the AllScale dashboard. Removing the file from HEAD does not remove it from history.
+4. Only THEN create or update the `.env` file with their credentials.
 
 Write a `.env` file:
 
@@ -470,7 +483,9 @@ Compare with timing-safe equality against the signature in the header.
 3. Compute body SHA-256 from **raw bytes before JSON parsing**
 4. Build canonical string and verify signature
 5. Only process payload after verification passes
-6. Respond with 200 OK
+6. **Check the money against your own order before fulfilling.** Look up your order by `order_id` and confirm `amount_cents` **and** `currency` (or `amount_coins` + `coin_symbol` for native stable-coin pricing) match what you charged. A valid signature proves the message came from AllScale — it does **not** prove it belongs to the order you are about to fulfill, and a genuine 0.10 USDT payment must never settle a $100 order. Reject the mismatch and alert; do not fulfill.
+7. **Make the handler idempotent.** Key on `all_scale_transaction_id`; a redelivered webhook must not fulfill the order twice.
+8. Respond with 200 OK
 
 ---
 

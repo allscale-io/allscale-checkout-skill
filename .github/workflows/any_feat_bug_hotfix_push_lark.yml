@@ -38,16 +38,23 @@ jobs:
               return
             }
 
-            const title = `【Github】Checkout Skill Push to ${branch}`
-            const msg = (head.message || "").trim()
+            // The commit message and branch name are rendered inside a Lark
+            // markdown card, so a backtick would break out of the ```text fence
+            // and let the pusher render live markdown (e.g. a spoofed link).
+            // Strip backticks; that also keeps the truncation below from
+            // severing a fence.
+            const safe = (s) => String(s ?? "").replace(/`/g, "'")
+
+            const title = `【Github】Checkout Skill Push to ${safe(branch)}`
+            const msg = safe(head.message).trim()
 
             // keep it short to avoid huge cards
             const shortMsg = msg.length > 500 ? msg.slice(0, 500) + "…" : msg
 
             const bodyLines = [
               `Repo: ${repo}`,
-              `Branch: ${branch}`,
-              `Pusher: ${context.actor}`,
+              `Branch: ${safe(branch)}`,
+              `Pusher: ${safe(context.actor)}`,
               `Commit: ${head.id?.slice(0, 7)}`,
               `URL: ${head.url}`,
               "",
