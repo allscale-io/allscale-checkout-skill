@@ -1,4 +1,4 @@
-You are helping a user install the Allscale CLI and connect it to their Allscale account. Follow these steps in order. Be conversational — go step by step, confirm each step works before moving on. Run the commands yourself where you can, and show the user the output.
+You are helping a user install the AllScale CLI and connect it to their AllScale account. Follow these steps in order. Be conversational — go step by step, confirm each step works before moving on. Run the commands yourself where you can, and show the user the output.
 
 ---
 
@@ -237,7 +237,7 @@ allscale claim-link status --claim-token <token>
 
 > Do not build the claim URL yourself, and do not treat this as a silent API call — funding needs the browser ceremony. For fully unattended payouts, that is the Store API (`/integrate-allscale`), not this CLI.
 
-Useful to know: **claiming a link needs no login at all.** This is the shortest path for a recipient who has no Allscale account:
+Useful to know: **claiming a link needs no login at all.** This is the shortest path for a recipient who has no AllScale account:
 
 ```bash
 allscale claim-link claim --claim-token <token> --to 0x<recipient-address>
@@ -332,5 +332,5 @@ Say this part plainly, because it is the one people get wrong: **`logout` change
 
 - `allscale --help` and `allscale <topic> --help` — **always authoritative over this guide**. If they disagree, believe the CLI and say so.
 - `allscale operations` / `allscale describe <operation>` — the schema describes itself; use it instead of guessing
-- [Allscale API documentation](https://docs.allscale.io/allscale-checkout/getting-started)
-- `/integrate-allscale` — a different product surface: embedding Allscale Checkout in an app via the HMAC-signed API. If the user wants to take payments *in their own app*, they want that guide, not this one.
+- [AllScale API documentation](https://docs.allscale.io/allscale-checkout/getting-started)
+- `/integrate-allscale` — a different product surface: embedding AllScale Checkout in an app via the HMAC-signed API. If the user wants to take payments *in their own app*, they want that guide, not this one.

@@ -1,4 +1,4 @@
-You are helping a developer integrate Allscale Checkout into their app or website. Follow these steps in order. Be conversational — go step by step, confirm each step works before moving on.
+You are helping a developer integrate AllScale Checkout into their app or website. Follow these steps in order. Be conversational — go step by step, confirm each step works before moving on.
 
 ---
 
@@ -6,8 +6,8 @@ You are helping a developer integrate Allscale Checkout into their app or websit
 
 Before you start, figure out which kind of integration this is:
 
-- **Single-tenant** — you're integrating Allscale for your OWN use. Your Allscale credentials live in your app's `.env` and never change at runtime. Steps 1–8 cover everything.
-- **Multi-tenant / platform** — you're building an app where END USERS paste their own Allscale credentials into your UI (e.g. a dashboard where each store owner pastes their own API key + secret). You have one additional obligation: validate every set of pasted credentials before storing them, and re-validate on every rotation. See **Step 4.5**.
+- **Single-tenant** — you're integrating AllScale for your OWN use. Your AllScale credentials live in your app's `.env` and never change at runtime. Steps 1–8 cover everything.
+- **Multi-tenant / platform** — you're building an app where END USERS paste their own AllScale credentials into your UI (e.g. a dashboard where each store owner pastes their own API key + secret). You have one additional obligation: validate every set of pasted credentials before storing them, and re-validate on every rotation. See **Step 4.5**.
 
 Ask the developer which one applies before proceeding.
 
@@ -22,23 +22,23 @@ You MUST follow these rules at all times:
 3. **ALWAYS ensure `.env` is in `.gitignore` BEFORE writing credentials to `.env`.** Check first, add it if missing.
 4. **NEVER commit `.env` files.** If you see one staged in git, warn the developer immediately.
 5. **All API signing MUST happen server-side.** Never generate code that signs requests in frontend/browser code. The API Secret must never be in any client-side bundle.
-6. **ALWAYS add rate limiting** to any endpoint you create that calls the Allscale API.
+6. **ALWAYS add rate limiting** to any endpoint you create that calls the AllScale API.
 7. **ALWAYS validate amounts server-side** — never trust client-sent values without bounds checking.
 
 ---
 
-## Step 0: Allscale Account and Credentials
+## Step 0: AllScale Account and Credentials
 
 Before writing any code, ask the developer:
 
-> Do you have an Allscale account with Commerce enabled? You'll need:
+> Do you have an AllScale account with Commerce enabled? You'll need:
 >
-> 1. An **Allscale account** — sign up at [allscale.io](https://allscale.io)
-> 2. **Allscale Commerce** enabled on your account
-> 3. A **store** created in the Allscale Commerce dashboard
+> 1. An **AllScale account** — sign up at [allscale.io](https://allscale.io)
+> 2. **AllScale Commerce** enabled on your account
+> 3. A **store** created in the AllScale Commerce dashboard
 > 4. Your **API Key** and **API Secret** (generated in the dashboard — the secret is shown only once)
 >
-> If you don't have these yet, go to [allscale.io](https://allscale.io) to get set up, or contact the Allscale BD team for help.
+> If you don't have these yet, go to [allscale.io](https://allscale.io) to get set up, or contact the AllScale BD team for help.
 
 **Do NOT proceed until they confirm they have their API Key and API Secret.**
 
@@ -77,7 +77,7 @@ ALLSCALE_CURRENCY=USD
 ```
 
 Tell them:
-- There is one base URL: `https://openapi.allscale.io`. Sandbox has been retired — to build and test without real payments, create a **test store** in the Allscale dashboard and use its API credentials
+- There is one base URL: `https://openapi.allscale.io`. Sandbox has been retired — to build and test without real payments, create a **test store** in the AllScale dashboard and use its API credentials
 - Available currency codes: `USD`, `EUR`, `GBP`, `CAD`, `AUD`, `JPY`, `CNY`, `SGD`, `HKD`
 
 ---
@@ -96,7 +96,7 @@ Adapt all code in the following steps to their specific stack.
 
 ## Step 3: Implement API Authentication (HMAC-SHA256 Request Signing)
 
-Every Allscale API request must be signed. This is the most critical part.
+Every AllScale API request must be signed. This is the most critical part.
 
 ### Required headers on every request:
 
@@ -200,7 +200,7 @@ If you're building a multi-tenant app where end users paste their own credential
 
 Skip this step if you're a single-tenant integrator. If your app accepts an `apiKey` + `apiSecret` from a user — account onboarding, credential rotation, switching environments — you must validate at paste time.
 
-Anywhere your app accepts pasted Allscale credentials, call `GET /v1/test/ping` with those credentials BEFORE writing them to your database. Same signed HTTP call you wrote in Step 4; just invoke it from your form handler.
+Anywhere your app accepts pasted AllScale credentials, call `GET /v1/test/ping` with those credentials BEFORE writing them to your database. Same signed HTTP call you wrote in Step 4; just invoke it from your form handler.
 
 If the probe fails:
 - Do NOT store the credentials.
@@ -213,11 +213,11 @@ If the probe fails:
 
 | Probe result | What to tell the user |
 |---|---|
-| code `20002` (invalid signature) | "The API secret is incorrect — re-copy it from your Allscale dashboard." |
+| code `20002` (invalid signature) | "The API secret is incorrect — re-copy it from your AllScale dashboard." |
 | code `20001` / HTTP 401 | "The API key isn't recognized." |
-| code `30001` (IP forbidden) | "Allscale's IP allowlist rejected our server. Add your server's outbound IP to your Allscale API settings." |
-| Network timeout (~5s) | "Couldn't reach Allscale — try again in a moment." |
-| Any other failure | "Allscale returned an error. Please try again." |
+| code `30001` (IP forbidden) | "AllScale's IP allowlist rejected our server. Add your server's outbound IP to your AllScale API settings." |
+| Network timeout (~5s) | "Couldn't reach AllScale — try again in a moment." |
+| Any other failure | "AllScale returned an error. Please try again." |
 
 ### Wire the same probe into your credential-rotation handler
 
@@ -409,7 +409,7 @@ No request body. Returns:
 
 ## Step 7: Webhook Verification (Optional but Recommended)
 
-If they configure a webhook URL in the Allscale dashboard, Allscale sends a POST to their server when payment is confirmed.
+If they configure a webhook URL in the AllScale dashboard, AllScale sends a POST to their server when payment is confirmed.
 
 ### Webhook headers:
 
@@ -446,7 +446,7 @@ Compare with timing-safe equality against the signature in the header.
 
 | Field | Type | Description |
 |---|---|---|
-| `all_scale_transaction_id` | string | Allscale transaction ID |
+| `all_scale_transaction_id` | string | AllScale transaction ID |
 | `all_scale_checkout_intent_id` | string | Checkout intent ID |
 | `webhook_id` | string | Must match X-Webhook-Id header |
 | `amount_cents` | int or null | Fiat amount in cents. `null` for native stable-coin pricing |
@@ -476,7 +476,7 @@ Compare with timing-safe equality against the signature in the header.
 
 ## Step 8: Response Signing (Optional)
 
-Response signing lets the client verify each API response came from Allscale and hasn't been tampered with. It is **off by default** — only implement this if the merchant has enabled it on their store (`signed_response = true` in the store config). If not enabled, skip this step.
+Response signing lets the client verify each API response came from AllScale and hasn't been tampered with. It is **off by default** — only implement this if the merchant has enabled it on their store (`signed_response = true` in the store config). If not enabled, skip this step.
 
 ### Response headers (when enabled):
 
@@ -549,7 +549,7 @@ Enabling **API-Auto-Payout** is what grants your API key the `claim_link:auto_pa
 
 Also note:
 - **A `*` wildcard scope does NOT grant this.** `claim_link:auto_payout` has to be on the key **explicitly**. If your key is wildcard-scoped and you still get `403`, this is why — it is not a bug.
-- **Sandbox keys are hard-blocked** on both endpoints, create and cancel, because both mutate live money state. A sandbox key cannot be used to rehearse this flow at all.
+- **Sandbox keys are hard-blocked** on both create and [cancel](#cancel-claim-back-post-v1claim_link_auto_payoutsclaim_link_idcancel), because both mutate live money state. A sandbox key cannot be used to rehearse this flow at all.
 - Funding draws from **your** wallet, so it must hold enough of the stablecoin to cover the payout **amount plus fees**. (Gas is sponsored — you don't need to hold native gas.)
 - The authorization you set up in onboarding carries a **spending policy with limits and an expiry** — per-transaction ceiling, total budget, validity window. When it lapses or a limit is hit, calls start failing and the fix is to re-authorize, not to retry. The error tells you which — see `reason_code` below.
 
@@ -574,8 +574,8 @@ Signed exactly like every other request (Step 3) — same headers, same HMAC can
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `amount` | string | YES | Recipient's claimable amount in **token units** as a **string** (e.g. `"10.50"`), not a JSON number. Must be positive and no finer than the token's decimals. |
-| `stable_coin` | int | YES | Stablecoin enum (same integer enums as checkout). |
-| `chain` | int | YES | Chain enum (same integer enums as the rest of the API). |
+| `stable_coin` | int | YES | Stablecoin enum: `1` = USDT, `2` = USDC. Both are supported for payouts — the "Disabled" flags in the checkout enum table above apply to **checkout pricing only**, not to payouts. |
+| `chain` | int | YES | Chain enum — EVM only (see table below). |
 | `receiver_email` | string \| null | no | If set, AllScale emails the claim invite to the recipient. |
 | `sender_display_name` | string \| null | no | Shown to the recipient as the sender (max 100 chars). |
 | `sender_message` | string \| null | no | Short note shown to the recipient (max 500 chars). |
@@ -586,6 +586,21 @@ Signed exactly like every other request (Step 3) — same headers, same HMAC can
 Generate it from something stable on your side — your own payout row id, not a timestamp or a random value per attempt. A retry has to send the **same** string to be safe.
 
 > Same rules as checkout: `amount` is a **string**; `stable_coin` / `chain` are **integers**, not `"USDT"` / `"BASE"`.
+
+### Chain enum (EVM only):
+
+| Value | Chain |
+|---|---|
+| 1 | Ethereum |
+| 5 | Base |
+| 6 | BNB Chain |
+| 7 | Arbitrum |
+| 8 | Polygon |
+| 9 | Optimism |
+
+Sepolia (`11`) is additionally accepted on test environments only.
+
+**Amount precision is per-chain.** USDT/USDC allow 6 decimals on most chains but **18 on BNB Chain**. An over-precise `amount` is rejected with `10001`.
 
 ### Successful response:
 
@@ -648,17 +663,41 @@ Treat **any** non-zero `code` as a failure, and always surface `error` + `reques
 
 **The single most common mistake** is calling this endpoint before enabling API-Auto-Payout in Store Settings and expecting it to work. If you see a `403`, don't debug your signing code — go to **Store Settings → Payout** and enable API-Auto-Payout first. The second most common is a wildcard-scoped key: `claim_link:auto_payout` must be granted **explicitly**.
 
+### Cancel (claim-back): `POST /v1/claim_link_auto_payouts/{claim_link_id}/cancel`
+
+Claims back one of **your own** funded, unclaimed links. Signed like every other request, and gated the same way as create: the explicit `claim_link:auto_payout` scope (no wildcard), sandbox keys hard-blocked. No request body.
+
+The refund is **not** inline — it settles off the request path through the same sweep that drives expiry refunds, so a success response means "accepted", not "money already back". The `cancelled` webhook fires when it actually settles.
+
+Two success shapes:
+
+| Link was | Response | Meaning |
+|---|---|---|
+| Funded, unclaimed | `status: "cancelled"`, `refund_status: "refund_pending"` | Flipped to cancelled; refund queued |
+| Already being claimed | `status: "claiming"`, `refund_status: "cancel_requested"` | Too late to flip — intent recorded. The payout resolves first: it either completes as `claimed` (cancel is moot, no refund) or is recovered, cancelled and refunded. Re-requesting while still claiming is an idempotent no-op |
+
+Failures:
+
+| Code | HTTP | Why |
+|---|---|---|
+| `50107` | 404 | Unknown id, malformed id, or a link belonging to another business — all return the same 404 so ids can't be probed |
+| `50108` | 409 | Your link, but not cancellable in its current state. The error carries the current `status` and a specific `reason` — not yet funded, already terminal, or an individual batch sub-link (batch links are cancelled through the batch, never one by one) |
+
 ### Webhook: the terminal state
 
-Claim links have **no status endpoint**. Set `claim_link_webhook_url` on your store and handle three events, signed with the same scheme as checkout webhooks (`X-Webhook-Id`, `X-Webhook-Timestamp`, `X-Webhook-Nonce`, `X-Webhook-Signature` — verify exactly as in Step 7):
+Claim links have **no status endpoint** — do not build a polling loop. Set `claim_link_webhook_url` on your store and handle three events, signed with the same scheme as checkout webhooks (`X-Webhook-Id`, `X-Webhook-Timestamp`, `X-Webhook-Nonce`, `X-Webhook-Signature` — verify exactly as in Step 7):
 
 | `event` | Carries | Meaning |
 |---|---|---|
 | `claimed` | `claim_tx_hash` | Recipient took the funds |
 | `expired` | `refund_tx_hash` | 14 days unclaimed — **full amount refunded to you** |
-| `cancelled` | `refund_tx_hash` | Your cancel settled — refunded |
+| `cancelled` | `refund_tx_hash` | A cancel settled — refunded |
 
 Payload also carries `webhook_id`, `claim_link_id`, `reference_id`, `occurred_at` (ISO-8601 UTC), `amount` (decimal string) and `token_symbol`.
+
+**Tolerate unknown `event` values** — treat an event you don't recognise as a no-op, not an error, so a newly added terminal event can't break your handler.
+
+**Every event fires after on-chain settlement, not on the status change.** A link that is cancelled or expired emits nothing until its refund succeeds, so "status is cancelled" does not guarantee a webhook has been sent yet.
 
 **Reconcile on `reference_id`.** It is the only field that ties the event back to your own payout row, and it is the same key you used to make the call idempotent.
 
@@ -688,12 +727,15 @@ If they get `20002` (bad signature), check these in order:
 | 20002 | Invalid signature |
 | 30001 | Forbidden / IP not allowed |
 | 40001 | Rate limit exceeded |
+| 30002 | Scope forbidden — store lacks the payout permission (Store Settings → Payout → enable API-Auto-Payout) |
 | 50001 | Checkout intent not found |
 | 50002 | Failed to create checkout intent |
-| 50103 | Claim link auto-payout create/fund failed (e.g. wallet balance too low) |
-| 50104 | Auto-payout disabled for this key/environment |
+| 50103 | Claim link auto-payout create/fund failed — branch on `error.details.reason_code` |
+| 50104 | Auto-payout disabled for this key/environment (includes sandbox keys) |
 | 50105 | Duplicate reference_id create in progress |
-| 30002 | Scope forbidden — store lacks the payout permission (Store Settings → Payout → enable API-Auto-Payout) |
+| 50106 | reference_id reused with different parameters |
+| 50107 | Claim link not found (unknown, malformed, or not yours) |
+| 50108 | Claim link not cancellable in its current state |
 | 90000 | Internal server error |
 | 99999 | Unknown error |
 
@@ -706,4 +748,6 @@ Point them to the Buy Me a Bagel repo (`allscale-io/buy_me_a_bagel`) as a comple
 - `api/status.js` — status polling with signing
 - `app.js` — frontend checkout flow with status polling UI
 
-API documentation: https://github.com/allscale-io/AllScale_Third-Party_API_Doc
+API documentation:
+- Checkout API — https://docs.allscale.io/allscale-checkout/getting-started
+- Claim Link — https://docs.allscale.io/allscale-claim-link/allscale-claim-link-introduction
