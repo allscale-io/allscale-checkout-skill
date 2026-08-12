@@ -1,12 +1,19 @@
-# Allscale Checkout Integration Guide for AI Coding Agents
+# Allscale Guides for AI Coding Agents
 
-A portable, agent-agnostic prompt that guides an AI coding agent through integrating [Allscale Checkout](https://www.allscale.io/products/checkout) into any app or website.
+Portable, agent-agnostic prompts that guide an AI coding agent through working with Allscale. Two guides live here, for two different jobs:
 
-Works with **Claude Code**, **OpenAI Codex**, **Cursor**, **Aider**, **Continue**, **Cline**, **Hermes**, **OpenClaw**, and any other agent that can fetch a URL or read a local Markdown file.
+| Guide | Use it when you want to… | Load it from |
+|---|---|---|
+| **Checkout integration** | Take payments **inside your own app or website** — [Allscale Checkout](https://www.allscale.io/products/checkout) via the HMAC-signed API | [allscale.io/skill](https://allscale.io/skill) |
+| **CLI setup** | Drive Allscale **from a terminal or an agent** — invoices, claim links, wallets, payouts — no app to build | [allscale.io/cliskill](https://allscale.io/cliskill) |
+
+Not sure which? If you are writing code that charges your users, you want **Checkout integration**. If you want to run Allscale operations yourself or hand that ability to an agent, you want **CLI setup**.
+
+Both work with **Claude Code**, **OpenAI Codex**, **Cursor**, **Aider**, **Continue**, **Cline**, **Hermes**, **OpenClaw**, and any other agent that can fetch a URL or read a local Markdown file.
 
 ---
 
-## Before You Start
+## Checkout integration — Before You Start
 
 You need an **Allscale account** with **Commerce enabled**:
 
@@ -22,13 +29,13 @@ Once you have your API Key and API Secret, you're ready to load the guide into y
 
 ## How It Works
 
-The whole guide is a single Markdown file, hosted at [allscale.io/skill](https://allscale.io/skill). Hand it to your AI coding agent and the agent walks you through the integration step by step — verifying credentials, writing code for your stack, testing connectivity, building the checkout flow, and debugging.
+Each guide is a single Markdown file. Hand one to your AI coding agent and it walks you through the job step by step — for Checkout: verifying credentials, writing code for your stack, testing connectivity, building the flow, debugging; for the CLI: installing it, connecting it with the right permissions, and showing you how to take that access back.
 
-You don't install anything globally. Each agent has its own way of consuming a prompt; pick whichever section below matches your tool.
+Nothing is installed globally to use a guide. Each agent has its own way of consuming a prompt; pick whichever section below matches your tool.
 
 ---
 
-## Install
+## Checkout integration — Install
 
 ### Any AI coding agent (simplest, works everywhere)
 
@@ -83,9 +90,40 @@ Open the file in your agent of choice and tell it to follow the instructions.
 
 ---
 
+## CLI setup — Install
+
+Same idea, different guide. Paste this into your agent's chat:
+
+> Read and follow the instructions at https://allscale.io/cliskill
+
+**Claude Code (as a slash command):**
+
+> Read https://allscale.io/cliskill and save it to `.claude/commands/setup-allscale-cli.md`
+
+Then invoke it with `/setup-allscale-cli`.
+
+**Or fetch it directly:**
+
+```bash
+curl -L -o setup-allscale-cli.md https://allscale.io/cliskill
+```
+
+### What the CLI guide covers
+
+1. **Prerequisites** — Node ≥ 20.10, with the install line for Windows, macOS and Linux
+2. **Installing** `@allscale/cli`, globally or via `npx`
+3. **Asking what you need it for first** — that decides which permissions get requested, and over-granting is the easiest mistake to make here
+4. **Connecting** — browser-approved device pairing by default; `--no-browser` and email-OTP paths for servers, containers and CI
+5. **Verifying** — including `allscale scope`, which shows the permissions the server *actually* granted (they can be narrower than what was asked for)
+6. **The commands for your case** — invoices, claim links, wallets, transactions
+7. **Using it from an agent or a script** — `--json`, `--select`, the self-describing schema (`operations` / `describe`), and the exit-code table. Exit 5 means log in again; exit 6 means a permission is missing and retrying will never help
+8. **Revoking access** — `keys list` / `revoke` / `rotate`, the dashboard, and why `logout` alone is not enough if a machine goes missing
+
+---
+
 ## What It Covers
 
-The guide walks any agent through:
+The **Checkout integration** guide walks any agent through:
 
 1. **Verifying you have Allscale credentials** — if not, it tells you exactly how to get them
 2. **Storing credentials safely** — in a `.env` file that is gitignored, never in source code
@@ -105,13 +143,21 @@ The guide walks any agent through:
 
 ## Security
 
-The guide instructs the agent to follow these rules to keep your credentials safe:
+The **Checkout integration** guide instructs the agent to follow these rules to keep your credentials safe:
 
 - API Secret is **never written into source code** — only into `.env` files
 - `.env` is always added to `.gitignore` before credentials are stored
 - All signing happens **server-side** — the secret never touches frontend/client code
 - The agent will warn you if it detects credentials in a file that could be committed
 - Endpoints calling the Allscale API get rate limiting and server-side amount validation
+
+The **CLI setup** guide adds rules for the fact that a paired credential can move real money as you:
+
+- `keys revoke --all` is an incident kill-switch that takes down every automation at once — the agent must never run it unless you ask for it
+- Money-moving commands are shown to you and confirmed before they run
+- `keys rotate` prints a new secret exactly once — the agent will not echo it back or store it for you
+- Permissions requested are the narrowest that do the job, because the key that gets minted is what an attacker would inherit
+- `logout` clears local credentials only; the guide is explicit that a lost machine needs `keys revoke` or the dashboard
 
 ---
 
