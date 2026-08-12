@@ -226,19 +226,19 @@ allscale invoice send --to-email client@example.com --amount 1.00 --wallet-id <w
 allscale invoice send --to-email client@example.com --wallet-id <wallet-id> \
   --line "Discovery (4h)|4|25.00" --line "Implementation (10h)|10|25.00"
 
-# Claim link. This one is a browser hand-off, not a CLI action: it opens the
-# Allscale creation page (or returns a completion_url). The CLI does not create
-# the link, does not move funds, and takes no amount / chain / coin arguments —
-# creating and funding happen together in the browser.
-allscale claim-link create
+# Claim link. The CLI fixes the intent and the browser authorizes it: you pass
+# the amount and chain here, they are locked, and the funding ceremony happens
+# in the browser — the page cannot change what you specified.
+# --idempotency-key is required; reuse it after an ambiguous result.
+allscale claim-link create --idempotency-key order-1042 --amount 10 --chain base
 
-# Read-only claim-link commands stay in the CLI
+# Read-only claim-link commands
 allscale claim-link list
-allscale claim-link preview --claim-token <token>
+allscale claim-link get <claim-link-id>
 allscale claim-link status --claim-token <token>
 ```
 
-> Do not try to pass an amount to `claim-link create` and do not build the URL yourself. If the user wants a scripted way to issue payouts, that is the Store API (`/integrate-allscale`), not this CLI.
+> Do not build the claim URL yourself, and do not treat this as a silent API call — funding needs the browser ceremony. For fully unattended payouts, that is the Store API (`/integrate-allscale`), not this CLI.
 
 Useful to know: **claiming a link needs no login at all.** This is the shortest path for a recipient who has no Allscale account:
 
