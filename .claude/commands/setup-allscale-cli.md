@@ -23,7 +23,7 @@ Every credential this CLI holds can move real money as the user's business. You 
 2. **NEVER run a money-moving command without showing the user the exact command and getting explicit confirmation first.** That covers `wallet send`, `payout send`, `invoice pay`, `claim-link create`, `claim-link claim`.
 3. **NEVER write any token or `~/.allscale/credentials.json` content into a repo file, a chat message, a log, or a commit.** If a secret is ever shown once, it is the user's to save — do not echo it back or keep a copy for them.
 4. **NEVER pass `--insecure-storage` without telling the user what it does** (credentials land in a plaintext file at `~/.allscale/credentials.json` instead of the OS keychain) **and getting their agreement.**
-5. **NEVER point the CLI at a non-production host unless the user asks.** Default is `https://app.allscale.io`. Changing `--api-base` / `ALLSCALE_API_BASE` sends their credentials somewhere else.
+5. **The published CLI talks to one place and cannot be redirected.** It is bound to `https://app.allscale.io`; `--api-base` does not exist and `ALLSCALE_API_BASE` is rejected. If a user asks how to point it at a test environment, the answer is that there is none — use a sandbox store instead (`allscale store create` makes one by default).
 6. **Request the narrowest scopes that do the job.** Do not ask for `claim_link:all` or `store:all` when `invoice:read_only` is enough — see Step 3.
 7. **`allscale logout` does NOT revoke anything server-side.** If a machine is lost or a key may be leaked, the fix is Dashboard revocation (*Settings → Security → Sessions · Agents & Devices*) — never `logout` alone, and there is no CLI command that does it.
 
@@ -102,7 +102,7 @@ Their answer decides the scopes you request in Step 3. Do not skip this — logg
 This is the recommended path. It needs no password and works for passkey-only accounts.
 
 ```bash
-allscale login-device --device-label <a-name-for-this-machine>
+allscale device-login --device-label <a-name-for-this-machine>
 ```
 
 What happens: a browser tab opens, the user confirms with the web-app session they are **already** logged into, picks the permissions on the approval screen, and the CLI receives its credentials.
@@ -110,7 +110,7 @@ What happens: a browser tab opens, the user confirms with the web-app session th
 Request scopes up front so the approval screen is pre-filled with the minimum:
 
 ```bash
-allscale login-device --device-label tom-mbp \
+allscale device-login --device-label tom-mbp \
   --scopes invoice:read_only --scopes claim_link:all
 ```
 
@@ -144,7 +144,7 @@ Help the user pick by how long the work actually runs:
 | An automation they will keep running | **30 days** (default) |
 | Long-lived unattended job | **90 days** — say out loud that it is the riskiest option |
 
-When it lapses, automation stops with exit 5 and the fix is a fresh `login-device`. There is no renewal.
+When it lapses, automation stops with exit 5 and the fix is a fresh `device-login`. There is no renewal.
 
 > **Every login path mints an agent key.** There is no cookie mode in the public CLI — no `--credential cookie`, no full-permission session. If you find a flow that only works with one, that is worth reporting, not working around.
 
@@ -153,7 +153,7 @@ When it lapses, automation stops with exit 5 and the fix is a fresh `login-devic
 Print the approval link instead of opening a tab, then approve it from any device:
 
 ```bash
-allscale login-device --no-browser
+allscale device-login --no-browser
 ```
 
 If cross-device approval isn't practical either, use an email OTP:
@@ -170,10 +170,7 @@ allscale otp-login --email <their-email> --otp-id <id> --otp <code>
 
 Both OTP and the password path below mint the **same kind of scoped, expiring agent key** as browser pairing — they are different ways to prove who you are, not different kinds of credential. Where the flow cannot show an approval screen, the request still carries scopes and a validity period, defaulting to 30 days.
 
-> `allscale login --email ... --password ...` also exists, but only works for **legacy payroll accounts**. Allscale Pay accounts use passkey + OTP. Do not offer password login unless they tell you they have a legacy payroll account, and if you do, use `--password-stdin` rather than putting a password in the command line:
-> ```bash
-> printf '%s' "$PW" | allscale login --email <their-email> --password-stdin
-> ```
+> **There is no password login in the public CLI.** `device-login` and `otp-login` are the only two ways in, and both mint the same kind of scoped, expiring credential.
 
 ---
 
@@ -186,7 +183,7 @@ allscale scope
 
 **`allscale scope` is the one that matters.** It reports the permissions the server actually granted, which can be narrower than what was requested. Run it now and show the user the result.
 
-Confirm out loud that the granted scopes cover what they told you in Step 2. If they don't, re-run `login-device` and have them grant the missing ones on the approval screen — do not try to work around a missing scope in code.
+Confirm out loud that the granted scopes cover what they told you in Step 2. If they don't, re-run `device-login` and have them grant the missing ones on the approval screen — do not try to work around a missing scope in code.
 
 Then prove a real call works, using a read-only command so nothing can go wrong:
 
@@ -282,8 +279,8 @@ Without the variable they fail with `raw.disabled` and **exit 10** — that is t
 | `1` | Internal error | Report it; not user-fixable |
 | `2` | Bad input, or credential storage unusable | Fix the arguments |
 | `3` | Network error or timeout | Retry with backoff |
-| `4` | No credentials | Run `login-device` |
-| `5` | Credentials expired | Re-run `login-device` — agent keys do not auto-renew |
+| `4` | No credentials | Run `device-login` |
+| `5` | Credentials expired | Re-run `device-login` — agent keys do not auto-renew |
 | `6` | Permission denied / capability gap | **Not fixable by retrying or re-logging in.** A scope is missing, or the action needs a one-time step in the web app |
 | `7` | Not found | Check the id |
 | `8` | Rate limited | Back off |
@@ -299,17 +296,17 @@ Exit `6` versus exit `5` is the distinction worth wiring in: `5` means try loggi
 
 Every paired credential can act as their business, so finish by making sure they know where revocation lives — **and it is not the CLI**.
 
-**The public CLI has no key-management commands.** No `keys list`, no `keys revoke`, no `keys rotate`, no kill-switch. That is deliberate: whoever issues a key is the one who withdraws it, and the server refuses key-management calls made with an agent key. An agent cannot revoke itself, or anything else.
+**The public CLI ships no key-management commands.** There is no `keys list`, no `keys revoke`, no `keys rotate`, no kill-switch — those commands are not in the published package at all. That is deliberate: whoever issues a credential is the one who withdraws it, and the server refuses key-management calls made with an agent key.
 
-**Revocation is in the Dashboard:** *Settings → Security → Sessions · Agents & Devices*. Every paired device is listed with what it can do, how long it has left, and a per-row revoke; there is an emergency revoke-all behind an explicit confirmation. Revoking takes effect immediately and **cannot be undone** — getting access back means authorizing again, not restoring or rotating the old credential.
+**Revocation is in the Dashboard:** *Settings → Security → Sessions · Agents & Devices*. Every paired device is listed with what it can do, how long it has left, and a per-row revoke, plus an emergency revoke-all behind an explicit confirmation. Revoking takes effect immediately and **cannot be undone** — getting access back means authorizing again.
 
 **What the CLI does have is local:**
 
 ```bash
-allscale logout      # deletes the key saved on THIS machine
+allscale logout      # deletes the credential saved on THIS machine
 ```
 
-Say this part plainly, because it is the one people get wrong: **`logout` changes nothing server-side.** If a laptop is lost or a key may have leaked, the answer is Dashboard revocation. Logging out just removes the local copy — the credential keeps working for anyone who has it.
+Say this part plainly, because it is the one people get wrong: **`logout` changes nothing server-side.** If a laptop is lost or a credential may have leaked, the answer is Dashboard revocation. Logging out only removes the local copy — the credential keeps working for anyone who has it.
 
 ---
 
@@ -320,12 +317,12 @@ Say this part plainly, because it is the one people get wrong: **`logout` change
 | `allscale: command not found` | npm global bin not on PATH. `npm prefix -g`, add its `bin/` to PATH, or use `npx @allscale/cli` |
 | Node version error | Needs ≥ 20.10. Check `node -v`, upgrade per Step 0 |
 | Exit `6` on a command that used to work | A scope is missing, or a one-time web-app step is pending. Run `allscale scope` and compare. Do not retry — it will keep failing |
-| Everything fails after a period of inactivity | The key hit the validity period chosen at authorization, and nothing renews it. `allscale whoami` shows the expiry; re-run `login-device` and pick a longer one if the work justifies it |
+| Everything fails after a period of inactivity | The key hit the validity period chosen at authorization, and nothing renews it. `allscale whoami` shows the expiry; re-run `device-login` and pick a longer one if the work justifies it |
 | `7530 CLI_AUTH_NO_GRANTABLE_SCOPE` | A requested scope cannot be granted — almost always `wallet` or `payroll`. Drop it |
 | A key-management call is refused | Expected — key management is not in the public CLI, and the server rejects it from an agent key. Use the Dashboard |
 | Exit `11` | Signing key in this build is rejected. `npm install -g @allscale/cli@latest`. Re-login will not fix it |
 | Keychain unavailable on Linux | No libsecret. It falls back to `~/.allscale/credentials.json` (mode 0600). Only pass `--insecure-storage` if the user accepts that (Safety Rule 4) |
-| Auth works, calls hit the wrong data | Check `--api-base` / `ALLSCALE_API_BASE`. Default is `https://app.allscale.io` |
+| Auth works, calls hit the wrong data | Check which profile is active (`--profile`). The endpoint cannot be changed — the published build only talks to `https://app.allscale.io` |
 | `invoice send` rejects a total | USDT/USDC totals must be at least 0.10 |
 | `payout send` fails on a fresh account | It needs a live store credential from Payout onboarding — a web-app step, not a CLI one |
 
