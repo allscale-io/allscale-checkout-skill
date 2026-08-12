@@ -1,13 +1,13 @@
-# Allscale Guides for AI Coding Agents
+# AllScale Guides for AI Coding Agents
 
-Portable, agent-agnostic prompts that guide an AI coding agent through working with Allscale. Two guides live here, for two different jobs:
+Portable, agent-agnostic prompts that guide an AI coding agent through working with AllScale. Two guides live here, for two different jobs:
 
 | Guide | Use it when you want to… | Load it from |
 |---|---|---|
-| **Checkout integration** | Take payments **inside your own app or website** — [Allscale Checkout](https://www.allscale.io/products/checkout) via the HMAC-signed API | [allscale.io/skill](https://allscale.io/skill) |
-| **CLI setup** | Drive Allscale **from a terminal or an agent** — invoices, claim links, wallets, payouts — no app to build | [allscale.io/cliskill](https://allscale.io/cliskill) |
+| **Checkout integration** | Take payments **inside your own app or website** — [AllScale Checkout](https://www.allscale.io/products/checkout) via the HMAC-signed API | [allscale.io/skill](https://allscale.io/skill) |
+| **CLI setup** | Drive AllScale **from a terminal or an agent** — invoices, claim links, wallets, payouts — no app to build | [allscale.io/cliskill](https://allscale.io/cliskill) |
 
-Not sure which? If you are writing code that charges your users, you want **Checkout integration**. If you want to run Allscale operations yourself or hand that ability to an agent, you want **CLI setup**.
+Not sure which? If you are writing code that charges your users, you want **Checkout integration**. If you want to run AllScale operations yourself or hand that ability to an agent, you want **CLI setup**.
 
 Both work with **Claude Code**, **OpenAI Codex**, **Cursor**, **Aider**, **Continue**, **Cline**, **Hermes**, **OpenClaw**, and any other agent that can fetch a URL or read a local Markdown file.
 
@@ -15,13 +15,13 @@ Both work with **Claude Code**, **OpenAI Codex**, **Cursor**, **Aider**, **Conti
 
 ## Checkout integration — Before You Start
 
-You need an **Allscale account** with **Commerce enabled**:
+You need an **AllScale account** with **Commerce enabled**:
 
 1. Go to [allscale.io](https://allscale.io) and create an account with passkey or email (recommended)
 2. Go to _Avatar_ > _Commerce_ > _Enable now_ to enable checkout in your profile (need to verify your email if you haven't already)
 3. Moving on to **Create new store** and follow the steps to generate your **API Key** and **API Secret** (remember to save both especially your API Secret as it'll only be shown once)
 
-> If you need help getting set up, contact the Allscale BD team.
+> If you need help getting set up, contact the AllScale BD team.
 
 Once you have your API Key and API Secret, you're ready to load the guide into your agent.
 
@@ -64,7 +64,7 @@ curl -L -o integrate-allscale.md https://allscale.io/skill
 Then in your `AGENTS.md` (or in a Codex session), reference it:
 
 ```markdown
-When the user wants to integrate Allscale Checkout, read and follow `./integrate-allscale.md`.
+When the user wants to integrate AllScale Checkout, read and follow `./integrate-allscale.md`.
 ```
 
 Or just paste the URL line from the "any agent" section above directly into Codex.
@@ -125,7 +125,7 @@ curl -L -o setup-allscale-cli.md https://allscale.io/cliskill
 
 The **Checkout integration** guide walks any agent through:
 
-1. **Verifying you have Allscale credentials** — if not, it tells you exactly how to get them
+1. **Verifying you have AllScale credentials** — if not, it tells you exactly how to get them
 2. **Storing credentials safely** — in a `.env` file that is gitignored, never in source code
 3. **Asking about your tech stack** — then writing integration code for your specific framework (Next.js, Flask, Rails, Express, etc.)
 4. **Step by step:**
@@ -149,7 +149,7 @@ The **Checkout integration** guide instructs the agent to follow these rules to 
 - `.env` is always added to `.gitignore` before credentials are stored
 - All signing happens **server-side** — the secret never touches frontend/client code
 - The agent will warn you if it detects credentials in a file that could be committed
-- Endpoints calling the Allscale API get rate limiting and server-side amount validation
+- Endpoints calling the AllScale API get rate limiting and server-side amount validation
 
 The **CLI setup** guide adds rules for the fact that a paired credential can move real money as you:
 
@@ -163,7 +163,7 @@ The **CLI setup** guide adds rules for the fact that a paired credential can mov
 
 ## Reference
 
-- [Allscale API Documentation](https://docs.allscale.io/allscale-checkout/getting-started)
+- [AllScale API Documentation](https://docs.allscale.io/allscale-checkout/getting-started)
 - [Buy Me a Bagel](https://github.com/allscale-io/buy_me_a_bagel) — working example built with this integration
 - [AGENTS.md](https://agents.md/) — open standard this guide is designed to coexist with
 
