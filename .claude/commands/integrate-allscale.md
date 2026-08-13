@@ -336,7 +336,7 @@ For native stable-coin pricing (priced in USDT directly, no FX), use `stable_coi
 ```
 
 - `checkout_url` — redirect or open this URL for the user to pay
-- `allscale_checkout_intent_id` — save this to poll status later
+- `allscale_checkout_intent_id` — **persist this on your order row now.** It is what you poll status with (Step 6) and, more importantly, it is the key you reconcile the webhook against (Step 7) — `order_id` is optional and yours, this id is always present and is AllScale's
 - `rate` — fiat→stable-coin exchange rate as a decimal string. `null` when the intent was created with `stable_coin` (native pricing, no FX)
 - Settlement is currently **USDT only** (`stable_coin_type: 1`)
 
@@ -483,9 +483,24 @@ Compare with timing-safe equality against the signature in the header.
 3. Compute body SHA-256 from **raw bytes before JSON parsing**
 4. Build canonical string and verify signature
 5. Only process payload after verification passes
-6. **Check the money against your own order before fulfilling.** Look up your order by `order_id` and confirm `amount_cents` **and** `currency` (or `amount_coins` + `coin_symbol` for native stable-coin pricing) match what you charged. A valid signature proves the message came from AllScale — it does **not** prove it belongs to the order you are about to fulfill, and a genuine 0.10 USDT payment must never settle a $100 order. Reject the mismatch and alert; do not fulfill.
-7. **Make the handler idempotent.** Key on `all_scale_transaction_id`; a redelivered webhook must not fulfill the order twice.
-8. Respond with 200 OK
+6. **Find your order by `all_scale_checkout_intent_id`, not by `order_id`.** `order_id` is an optional field you may never have set (see the create-intent table in Step 5), and it is your string, so it is not guaranteed unique on AllScale's side. `all_scale_checkout_intent_id` is always present and is the same id Step 5 told you to save when you created the intent — store it on your order row at creation time and make it your lookup key here. Use `order_id` only as a secondary cross-check, and only when you actually set it.
+
+   If no order matches the intent id: do not fulfill, do not create an order from the webhook. Log it and alert — a signed webhook for an intent you have no record of means your create-intent write failed or you are receiving another store's traffic.
+
+7. **Check the money against that order before fulfilling.** Confirm the payment matches what you charged:
+
+   - **Fiat-priced intents:** compare `amount_cents` (integer) and `currency` (**integer enum** — `1` for USD, not the string `"USD"`; `currency_symbol` is a display field, do not authorize on it).
+   - **Native stable-coin intents:** `amount_cents` / `currency` / `currency_symbol` are `null`. Compare `amount_coins` and `coin_symbol` instead. `amount_coins` is a **decimal string** — parse it with a decimal/bignum type (Python `Decimal`, JS `BigInt` on minor units, Java `BigDecimal`), never a float, and never compare it as a string (`"10.5"` and `"10.50"` are the same amount and different strings).
+
+   A valid signature proves the message came from AllScale — it does **not** prove it belongs to the order you are about to fulfill, and a genuine 0.10 USDT payment must never settle a $100 order. On any mismatch: reject, alert, do not fulfill.
+
+   Also confirm the order is still awaiting payment. Note that `actual_paid_amount` can be **less** than what you asked for — that is the `UNDERPAID` (`-3`) case, not a payment.
+
+8. **Make fulfillment idempotent at the ORDER level, not just the webhook level.** Deduplicating on `all_scale_transaction_id` alone is not enough: it only suppresses a redelivery of the *same* transaction, and it will happily fulfill twice if two different transactions land against one order or if two redeliveries race each other.
+
+   Enforce it in the database, not in application logic: a **unique constraint** on your order id in whatever table records fulfillment, and flip the order to `paid` with a **conditional update** that only matches a not-yet-paid row (`UPDATE orders SET status='paid' WHERE id=? AND status='awaiting_payment'`). Fulfill only when that update reports one row changed. Keep the `all_scale_transaction_id` dedup as well — record it for audit and to make retries cheap — but the order-level constraint is what actually makes double-fulfillment impossible under concurrency.
+
+9. Respond with 200 OK
 
 ---
 
