@@ -494,11 +494,15 @@ Compare with timing-safe equality against the signature in the header.
 
    A valid signature proves the message came from AllScale — it does **not** prove it belongs to the order you are about to fulfill, and a genuine 0.10 USDT payment must never settle a $100 order. On any mismatch: reject, alert, do not fulfill.
 
-   Also confirm the order is still awaiting payment. Note that `actual_paid_amount` can be **less** than what you asked for — that is the `UNDERPAID` (`-3`) case, not a payment.
+   Also confirm the order is still awaiting payment. Underpayment does **not** reach you here — this webhook fires on confirmation, and an underpaid intent goes terminal as `UNDERPAID` (`-3`) instead. That state surfaces through status polling (Step 6), or by fetching the full intent, where `actual_paid_amount` tells you what was really received. Do not expect that field in the webhook payload; it is not in the table above.
 
 8. **Make fulfillment idempotent at the ORDER level, not just the webhook level.** Deduplicating on `all_scale_transaction_id` alone is not enough: it only suppresses a redelivery of the *same* transaction, and it will happily fulfill twice if two different transactions land against one order or if two redeliveries race each other.
 
-   Enforce it in the database, not in application logic: a **unique constraint** on your order id in whatever table records fulfillment, and flip the order to `paid` with a **conditional update** that only matches a not-yet-paid row (`UPDATE orders SET status='paid' WHERE id=? AND status='awaiting_payment'`). Fulfill only when that update reports one row changed. Keep the `all_scale_transaction_id` dedup as well — record it for audit and to make retries cheap — but the order-level constraint is what actually makes double-fulfillment impossible under concurrency.
+   Enforce it in the database, not in application logic: a **unique constraint** on your order id in whatever table records fulfillment, and claim the order with a **conditional update** that only matches a not-yet-paid row (`UPDATE orders SET status='paid' WHERE id=? AND status='awaiting_payment'`). Proceed only when that update reports one row changed. Keep the `all_scale_transaction_id` dedup as well — record it for audit and to make retries cheap — but the order-level constraint is what makes double-fulfillment impossible under concurrency.
+
+   **Do not do the actual fulfillment in that window.** If you mark the order paid and then ship / grant access / send the license as the next statement, a crash in between leaves an order that is `paid` and never fulfilled — and because the conditional update now matches zero rows, no retry will ever pick it up. You would have traded double-fulfillment for silent non-delivery, which is worse: nobody gets an alert, the customer has paid.
+
+   Make the claim and a durable record of the work owed atomic, and let something retryable do the work: in **one transaction**, flip the status *and* insert a fulfillment/outbox row keyed by order id (the unique constraint lives here). A worker then drives that row to completion with retries, and is itself idempotent. If your fulfillment is a local DB write anyway, putting it in the same transaction is equivalent and simpler. What you must not do is let the only record of "this order is paid" commit separately from the only record of "this order still needs fulfilling".
 
 9. Respond with 200 OK
 
