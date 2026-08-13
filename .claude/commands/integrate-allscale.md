@@ -56,7 +56,20 @@ Then immediately proceed to set up their `.env` file safely (Step 1).
 
 1. Check if `.gitignore` exists. If not, create it.
 2. Check if `.env` is listed in `.gitignore`. If not, add it.
-3. Only THEN create or update the `.env` file with their credentials.
+3. Check whether `.env` is **already tracked** by git:
+
+   ```bash
+   git ls-files --error-unmatch .env
+   ```
+
+   If that succeeds, the file is already in the index and **`.gitignore` will not help** — gitignore only applies to untracked files, so every future commit would keep publishing the secret. Untrack it first, then tell the developer:
+
+   ```bash
+   git rm --cached .env
+   ```
+
+   If `.env` was ever *committed*, the secret is in the repo history and is compromised even after this. Tell them plainly: rotate the API Secret in the AllScale dashboard. Removing the file from HEAD does not remove it from history.
+4. Only THEN create or update the `.env` file with their credentials.
 
 Write a `.env` file:
 
@@ -323,7 +336,7 @@ For native stable-coin pricing (priced in USDT directly, no FX), use `stable_coi
 ```
 
 - `checkout_url` — redirect or open this URL for the user to pay
-- `allscale_checkout_intent_id` — save this to poll status later
+- `allscale_checkout_intent_id` — **persist this on your order row now.** It is what you poll status with (Step 6) and, more importantly, it is the key you reconcile the webhook against (Step 7) — `order_id` is optional and yours, this id is always present and is AllScale's
 - `rate` — fiat→stable-coin exchange rate as a decimal string. `null` when the intent was created with `stable_coin` (native pricing, no FX)
 - Settlement is currently **USDT only** (`stable_coin_type: 1`)
 
@@ -470,7 +483,28 @@ Compare with timing-safe equality against the signature in the header.
 3. Compute body SHA-256 from **raw bytes before JSON parsing**
 4. Build canonical string and verify signature
 5. Only process payload after verification passes
-6. Respond with 200 OK
+6. **Find your order by `all_scale_checkout_intent_id`, not by `order_id`.** `order_id` is an optional field you may never have set (see the create-intent table in Step 5), and it is your string, so it is not guaranteed unique on AllScale's side. `all_scale_checkout_intent_id` is always present and is the same id Step 5 told you to save when you created the intent — store it on your order row at creation time and make it your lookup key here. Use `order_id` only as a secondary cross-check, and only when you actually set it.
+
+   If no order matches the intent id: do not fulfill, do not create an order from the webhook. Log it and alert — a signed webhook for an intent you have no record of means your create-intent write failed or you are receiving another store's traffic.
+
+7. **Check the money against that order before fulfilling.** Confirm the payment matches what you charged:
+
+   - **Fiat-priced intents:** compare `amount_cents` (integer) and `currency` (**integer enum** — `1` for USD, not the string `"USD"`; `currency_symbol` is a display field, do not authorize on it).
+   - **Native stable-coin intents:** `amount_cents` / `currency` / `currency_symbol` are `null`. Compare `amount_coins` and `coin_symbol` instead. `amount_coins` is a **decimal string** — parse it with a decimal/bignum type (Python `Decimal`, JS `BigInt` on minor units, Java `BigDecimal`), never a float, and never compare it as a string (`"10.5"` and `"10.50"` are the same amount and different strings).
+
+   A valid signature proves the message came from AllScale — it does **not** prove it belongs to the order you are about to fulfill, and a genuine 0.10 USDT payment must never settle a $100 order. On any mismatch: reject, alert, do not fulfill.
+
+   Also confirm the order is still awaiting payment. Underpayment does **not** reach you here — this webhook fires on confirmation, and an underpaid intent goes terminal as `UNDERPAID` (`-3`) instead. That state surfaces through status polling (Step 6), or by fetching the full intent, where `actual_paid_amount` tells you what was really received. Do not expect that field in the webhook payload; it is not in the table above.
+
+8. **Make fulfillment idempotent at the ORDER level, not just the webhook level.** Deduplicating on `all_scale_transaction_id` alone is not enough: it only suppresses a redelivery of the *same* transaction, and it will happily fulfill twice if two different transactions land against one order or if two redeliveries race each other.
+
+   Enforce it in the database, not in application logic: a **unique constraint** on your order id in whatever table records fulfillment, and claim the order with a **conditional update** that only matches a not-yet-paid row (`UPDATE orders SET status='paid' WHERE id=? AND status='awaiting_payment'`). Proceed only when that update reports one row changed. Keep the `all_scale_transaction_id` dedup as well — record it for audit and to make retries cheap — but the order-level constraint is what makes double-fulfillment impossible under concurrency.
+
+   **Do not do the actual fulfillment in that window.** If you mark the order paid and then ship / grant access / send the license as the next statement, a crash in between leaves an order that is `paid` and never fulfilled — and because the conditional update now matches zero rows, no retry will ever pick it up. You would have traded double-fulfillment for silent non-delivery, which is worse: nobody gets an alert, the customer has paid.
+
+   Make the claim and a durable record of the work owed atomic, and let something retryable do the work: in **one transaction**, flip the status *and* insert a fulfillment/outbox row keyed by order id (the unique constraint lives here). A worker then drives that row to completion with retries, and is itself idempotent. If your fulfillment is a local DB write anyway, putting it in the same transaction is equivalent and simpler. What you must not do is let the only record of "this order is paid" commit separately from the only record of "this order still needs fulfilling".
+
+9. Respond with 200 OK
 
 ---
 

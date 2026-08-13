@@ -47,10 +47,19 @@ jobs:
               core.warning(`Could not fetch PR file list: ${error.message}`)
             }
 
+            // Everything below is attacker-controlled on a fork PR: branch name,
+            // filenames, title, body. It is rendered inside a Lark markdown card,
+            // so a backtick would break out of the ```text fence and let a PR
+            // author render live markdown (e.g. a spoofed link) in a card that
+            // reviewers trust. Strip backticks from every interpolated field.
+            // This also makes the truncation below safe: with no backticks in the
+            // string, a slice() can never sever a fence.
+            const safe = (s) => String(s ?? "").replace(/`/g, "'")
+
             const shorten = (s) =>
               s.length > MAX_FILEPATH_CHARS ? s.slice(0, MAX_FILEPATH_CHARS - 1) + "…" : s
 
-            const shown = filenames.slice(0, MAX_FILES_SHOWN).map(shorten)
+            const shown = filenames.slice(0, MAX_FILES_SHOWN).map(f => shorten(safe(f)))
             const more = Math.max(0, filenames.length - shown.length)
 
             const fileLines = [
@@ -63,9 +72,9 @@ jobs:
 
             let body = [
               `Repo: ${owner}/${repo}`,
-              `PR: #${pr.number} — ${pr.title}`,
-              `Author: ${pr.user.login}`,
-              `Base → Head: ${pr.base.ref} ← ${pr.head.ref}`,
+              `PR: #${pr.number} — ${safe(pr.title)}`,
+              `Author: ${safe(pr.user.login)}`,
+              `Base → Head: ${safe(pr.base.ref)} ← ${safe(pr.head.ref)}`,
               `URL: ${pr.html_url}`,
               "",
               `Files changed: ${filenames.length || pr.changed_files || "unknown"}`,
@@ -77,9 +86,9 @@ jobs:
             if (body.length > MAX_BODY_CHARS) {
               body = [
                 `Repo: ${owner}/${repo}`,
-                `PR: #${pr.number} — ${pr.title}`,
-                `Author: ${pr.user.login}`,
-                `Base → Head: ${pr.base.ref} ← ${pr.head.ref}`,
+                `PR: #${pr.number} — ${safe(pr.title)}`,
+                `Author: ${safe(pr.user.login)}`,
+                `Base → Head: ${safe(pr.base.ref)} ← ${safe(pr.head.ref)}`,
                 `URL: ${pr.html_url}`,
                 "",
                 `Files changed: ${filenames.length || pr.changed_files || "unknown"}`,
@@ -94,8 +103,8 @@ jobs:
             // --- PR message (title + description/body) ---
             const MAX_PR_BODY_CHARS = 1600
             
-            const prTitle = pr.title || "(no title)"
-            const prBodyRaw = (pr.body || "").trim()
+            const prTitle = safe(pr.title) || "(no title)"
+            const prBodyRaw = safe(pr.body).trim()
             
             // Keep it readable + safe
             const prBody = prBodyRaw.length > MAX_PR_BODY_CHARS
@@ -152,7 +161,7 @@ jobs:
                   "content": f"{mention}\n\n"
                             f"```text\n{body}\n```"
                             f"\n\n**PR Message**\n"
-                            f"{pr_message}"
+                            f"```text\n{pr_message}\n```"
                 },
                 {
                   "tag": "action",

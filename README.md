@@ -117,7 +117,7 @@ curl -L -o setup-allscale-cli.md https://allscale.io/cliskill
 5. **Verifying** — including `allscale scope`, which shows the permissions the server *actually* granted (they can be narrower than what was asked for)
 6. **The commands for your case** — invoices, claim links, wallets, transactions
 7. **Using it from an agent or a script** — `--json`, `--select`, the self-describing schema (`operations` / `describe`), and the exit-code table. Exit 5 means log in again; exit 6 means a permission is missing and retrying will never help
-8. **Revoking access** — `keys list` / `revoke` / `rotate`, the dashboard, and why `logout` alone is not enough if a machine goes missing
+8. **Revoking access** — where revocation actually lives (the Dashboard: _Settings → Security → Sessions · Agents & Devices_), and why `logout` alone is not enough if a machine goes missing
 
 ---
 
@@ -153,11 +153,11 @@ The **Checkout integration** guide instructs the agent to follow these rules to 
 
 The **CLI setup** guide adds rules for the fact that a paired credential can move real money as you:
 
-- `keys revoke --all` is an incident kill-switch that takes down every automation at once — the agent must never run it unless you ask for it
+- **The public CLI has no key-management commands** — no `keys list`, no `keys revoke`, no `keys rotate`, no kill-switch. That is deliberate: whoever issues a credential is the one who withdraws it, and the server refuses key-management calls made with an agent key. The guide never tells you a CLI command will revoke something
 - Money-moving commands are shown to you and confirmed before they run
-- `keys rotate` prints a new secret exactly once — the agent will not echo it back or store it for you
+- If a secret is shown once, it is yours to save — the agent will not echo it back or keep a copy for you
 - Permissions requested are the narrowest that do the job, because the key that gets minted is what an attacker would inherit
-- `logout` clears local credentials only; the guide is explicit that a lost machine needs `keys revoke` or the dashboard
+- `logout` clears local credentials only and changes nothing server-side; a lost machine or a leaked key needs Dashboard revocation — _Settings → Security → Sessions · Agents & Devices_, which takes effect immediately and cannot be undone
 
 ---
 
