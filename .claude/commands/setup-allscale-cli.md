@@ -250,6 +250,11 @@ cat winners.csv | while IFS=, read name email amount; do
     --reference-id "batch-2026-08-$email" --receiver-email "$email"
 done
 
+```
+
+`payout status` is the odd one out: it reads the merchant's authorization — remaining budget, caps, expiry — **using their login session, not the store key**. So it is the one payout command that works right after `device-login` with no store credentials at all:
+
+```bash
 allscale payout status    # remaining budget, caps, expiry
 ```
 
