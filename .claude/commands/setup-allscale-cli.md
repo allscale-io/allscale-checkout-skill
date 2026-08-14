@@ -235,7 +235,33 @@ allscale claim-link get <claim-link-id>
 allscale claim-link status --claim-token <token>
 ```
 
-> Do not build the claim URL yourself, and do not treat this as a silent API call — funding needs the browser ceremony. For fully unattended payouts, that is the Store API (`/integrate-allscale`), not this CLI.
+> Do not build the claim URL yourself, and do not treat this as a silent API call: **`claim-link create` needs one browser ceremony per link.** One link, one confirmation. Never put it in a loop over a CSV — a hundred payouts would mean a hundred browser confirmations.
+
+**For unattended batches, this CLI has a second path that needs no browser at all:**
+
+```bash
+# Authenticates with the STORE's API key/secret — not the user's login.
+# No browser, no passkey. --reference-id makes retries idempotent.
+export ALLSCALE_STORE_API_KEY=...
+export ALLSCALE_STORE_API_SECRET=...
+
+cat winners.csv | while IFS=, read name email amount; do
+  allscale payout send --amount "$amount" --chain base --stable-coin USDC \
+    --reference-id "batch-2026-08-$email" --receiver-email "$email"
+done
+
+```
+
+`payout status` is the odd one out: it reads the merchant's authorization — remaining budget, caps, expiry — **using their login session, not the store key**. So it is the one payout command that works right after `device-login` with no store credentials at all:
+
+```bash
+allscale payout status    # remaining budget, caps, expiry
+```
+
+The trade is deliberate: the merchant authorizes **once** in the dashboard (*Store Settings → Payout Authorization*) with a per-transaction cap, a total cap and an expiry, and after that scripts run unattended inside those limits. Two things to tell them before they try it:
+
+- **The store must be `live` and have completed Payout onboarding.** `allscale store create` makes a **sandbox** store by default (`--live` for a real one), and a sandbox store's credentials will be rejected by `payout send`. This is the most common dead end.
+- **This is a different credential system.** The store key can move money within its authorized limits regardless of what the user's agent key is scoped to — so "the agent can't spend anything" is not true once store credentials are on the machine.
 
 Useful to know: **claiming a link needs no login at all.** This is the shortest path for a recipient who has no AllScale account:
 
