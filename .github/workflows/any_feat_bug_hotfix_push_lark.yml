@@ -12,6 +12,9 @@ on:
       - "bug/**"
       - "hotfix/**"
 
+permissions:
+  contents: read
+
 jobs:
   notify:
     # Skip PR merge commits / merge commits
