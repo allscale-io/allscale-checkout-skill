@@ -292,7 +292,7 @@ For native stable-coin pricing (priced in USDT directly, no FX), use `stable_coi
 | `redirect_url` | string or null | no | Where to send the user after payment completes |
 | `extra` | object or null | no | Arbitrary metadata |
 
-*Exactly one of `currency` or `stable_coin` must be set — not both, not neither. Minimum payment is **0.1 USDT**.
+*Exactly one of `currency` or `stable_coin` must be set — not both, not neither. Minimum payment is **0.1 USDT** on a production store (0.01 on a test store).
 
 **CRITICAL: `currency` and `stable_coin` must be integers, NOT strings. Do NOT send `"USD"` — send `1`. Same for `stable_coin`: send `1`, not `"USDT"`.**
 
@@ -449,9 +449,29 @@ Walk the developer through these checks, one scenario at a time:
 - **Webhook only on success.** The merchant webhook fires **only** for `CONFIRMED` and its payload carries `status = 20`. None of the rejection, refund or failure scenarios deliver a webhook, so the app's order state for those **must** come from polling `GET /v1/checkout_intents/{intent_id}/status` (or the full intent object) — never from "no webhook arrived".
 - **Full intent fields.** After CNY, `GET /v1/checkout_intents/{intent_id}` shows `actual_paid_amount` ≥ `amount_coins` and `status = -2`; after AUD/HKD, `actual_paid_amount` is set but `status = -1`. Use these to assert the reconciliation logic, not just the status integer.
 
-Minimum amounts: the test store applies the same 0.1 USDT minimum as production, so a small intent (e.g. 1 USD) is enough to exercise every row.
+- **Timing.** USD, CNY, AUD and HKD resolve as soon as the payment is seen on-chain. SGD only reaches `PENDING_MANUAL_OPERATION` when the stalled-payment sweep runs, about 10 minutes after the funds arrive — tell the developer to expect that wait (and that the Step 6 poller will time out first unless they extend it for this test).
 
-> **Test stores vs. Claim Link payouts:** this currency trick is a checkout-intent feature only. Test-store (sandbox) keys are hard-blocked from `POST /v1/claim_link_auto_payouts` — see Step 9.
+Amounts: a test store accepts orders from 0.01 USDT (production requires more than 0.1) and charges no service fee at or below 0.1, so a 0.1 USD intent is enough to exercise every row.
+
+Also tell the developer:
+
+- The scenario is selected by `currency` alone — it ignores the store's risk-screening setting and applies on every chain the store accepts. An intent priced natively with `stable_coin` has no `currency` and follows the USD path; send `currency` to pick a scenario.
+- CNY really refunds on-chain to the paying address. For HKD and AUD the funds stay in the deposit wallet until manual recovery, as in production.
+
+**Other ways a test store differs from production:**
+
+| Area | Test store | Production |
+|---|---|---|
+| Minimum order amount | 0.01 coin | greater than 0.1 coin (`50002` below that) |
+| Service fee | none on orders at or below 0.1 coin | `max(0.1, amount × fee rate)` |
+| Webhook URL | `http://` or `https://` | `https://` only |
+| Sepolia testnet (chain `11`) | accepted | rejected |
+| Risk screening | off on a new store, not run on testnet chains | on by default |
+| Claim Link auto-payout | not available to test-store keys (Step 9) | available once onboarded |
+| Store lifetime | suspended 30 days after creation, no renewal | no expiry |
+| Number of stores | one active test store per business | no limit |
+
+Remind them to switch to a production store once the integration is stable — the test store will stop working after 30 days.
 
 ---
 
