@@ -453,7 +453,25 @@ Walk the developer through these checks, one scenario at a time:
 
 Amounts: a test store accepts orders from 0.01 USDT (production requires more than 0.1) and charges no service fee at or below 0.1, so a 0.1 USD intent is enough to exercise every row.
 
-> **Test stores vs. Claim Link payouts:** this currency trick is a checkout-intent feature only. Test-store (sandbox) keys are hard-blocked from `POST /v1/claim_link_auto_payouts` — see Step 9.
+Also tell the developer:
+
+- The scenario is selected by `currency` alone — it ignores the store's risk-screening setting and applies on every chain the store accepts. An intent priced natively with `stable_coin` has no `currency` and follows the USD path; send `currency` to pick a scenario.
+- CNY really refunds on-chain to the paying address. For HKD and AUD the funds stay in the deposit wallet until manual recovery, as in production.
+
+**Other ways a test store differs from production:**
+
+| Area | Test store | Production |
+|---|---|---|
+| Minimum order amount | 0.01 coin | greater than 0.1 coin (`50002` below that) |
+| Service fee | none on orders at or below 0.1 coin | `max(0.1, amount × fee rate)` |
+| Webhook URL | `http://` or `https://` | `https://` only |
+| Sepolia testnet (chain `11`) | accepted | rejected |
+| Risk screening | off on a new store, not run on testnet chains | on by default |
+| Claim Link auto-payout | not available to test-store keys (Step 9) | available once onboarded |
+| Store lifetime | suspended 30 days after creation, no renewal | no expiry |
+| Number of stores | one active test store per business | no limit |
+
+Remind them to switch to a production store once the integration is stable — the test store will stop working after 30 days.
 
 ---
 
