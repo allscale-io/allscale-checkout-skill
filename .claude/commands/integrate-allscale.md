@@ -394,6 +394,7 @@ No request body. Returns:
 - Stop when status is terminal (negative values or 20)
 - Timeout after 10 minutes
 - Show user-friendly messages for each state transition
+- Status `4` (`PENDING_MANUAL_OPERATION`) is not terminal and may never advance on its own — let the timeout end the wait; see Step 6.5 for how to trigger it on a test store
 
 ### Full intent details (optional):
 
@@ -417,6 +418,40 @@ No request body. Returns:
 | `actual_paid_amount` | string or null | Amount actually received on-chain |
 | `service_fee_amount` | string or null | Platform fee deducted |
 | `net_income_amount` | string or null | After-fee amount to merchant |
+
+---
+
+## Step 6.5: Test Every Outcome With a Test Store (Currency-Triggered Scenarios)
+
+A **test store** is the only way to rehearse the non-happy paths — KYT rejection, refund, stuck settlement, forwarding failure — without waiting for them to happen in production. On a test store the `currency` field of `POST /v1/checkout_intents/` doubles as a **scenario selector**. The payer still sends real USDT to the deposit address; what changes is what AllScale does after the funds arrive.
+
+**This only applies to test stores.** On a production store `currency` is just the pricing currency and every row below behaves like USD.
+
+Two layers, in order:
+
+1. **Underpayment wins, whatever the currency.** Pay less than `amount_coins` and the intent ends in `UNDERPAID` (-3) with an automatic refund to the payer — exactly like production.
+2. **Full payment is overridden by the currency.** Pay the full amount and the test store replaces the normal success with the scenario for that currency:
+
+| `currency` | Code | Simulated scenario | Statuses you will observe | Final | Webhook? |
+|---|---|---|---|---|---|
+| USD | 1 | Happy path | `TEMP_WALLET_RECEIVED` (3) → `ON_CHAIN` (10) → `CONFIRMED` (20) | `CONFIRMED` (20) | Yes |
+| CNY | 31 | **Forced KYT rejection** — risk score pushed over the store's threshold, full amount refunded to the payer | `TEMP_WALLET_RECEIVED` (3) → `SEND_BACK` (5) → `REJECTED` (-2) | `REJECTED` (-2) | No |
+| AUD | 9 | **KYT rejection, and the refund also fails** — funds stay in the deposit wallet pending manual recovery | `TEMP_WALLET_RECEIVED` (3) → `SEND_BACK` (5) → `FAILED` (-1) | `FAILED` (-1) | No |
+| SGD | 126 | **Forwarding stuck** — settlement to the merchant wallet never completes | `TEMP_WALLET_RECEIVED` (3) → `PENDING_MANUAL_OPERATION` (4) | `PENDING_MANUAL_OPERATION` (4), **not terminal** | No |
+| HKD | 57 | **Forwarding failure** — generic on-chain error before any refund is attempted | `TEMP_WALLET_RECEIVED` (3) → `FAILED` (-1) | `FAILED` (-1) | No |
+| any other | — | Same as USD | | `CONFIRMED` (20) | Yes |
+
+Walk the developer through these checks, one scenario at a time:
+
+- **Terminal handling.** CNY, AUD and HKD each land on a different negative status. Confirm the app shows a distinct, user-facing message for `REJECTED`, `FAILED` and `UNDERPAID` instead of one generic "payment failed".
+- **Non-terminal stuck state.** SGD parks the intent at `PENDING_MANUAL_OPERATION` (4), which is **not** terminal and will not advance on its own. The poller's 10-minute timeout (Step 6) is what must end the wait — verify the app does not spin forever and does not treat 4 as a failure either (AllScale ops can still complete it, after which it becomes `CONFIRMED`).
+- **Refund in flight.** CNY and AUD pass through `SEND_BACK` (5). The app should keep showing "refund in progress" for 5 and only settle its UI on -2 / -1.
+- **Webhook only on success.** The merchant webhook fires **only** for `CONFIRMED` and its payload carries `status = 20`. None of the rejection, refund or failure scenarios deliver a webhook, so the app's order state for those **must** come from polling `GET /v1/checkout_intents/{intent_id}/status` (or the full intent object) — never from "no webhook arrived".
+- **Full intent fields.** After CNY, `GET /v1/checkout_intents/{intent_id}` shows `actual_paid_amount` ≥ `amount_coins` and `status = -2`; after AUD/HKD, `actual_paid_amount` is set but `status = -1`. Use these to assert the reconciliation logic, not just the status integer.
+
+Minimum amounts: the test store applies the same 0.1 USDT minimum as production, so a small intent (e.g. 1 USD) is enough to exercise every row.
+
+> **Test stores vs. Claim Link payouts:** this currency trick is a checkout-intent feature only. Test-store (sandbox) keys are hard-blocked from `POST /v1/claim_link_auto_payouts` — see Step 9.
 
 ---
 

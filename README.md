@@ -133,6 +133,7 @@ The **Checkout integration** guide walks any agent through:
    - Test route verification (confirm your setup works)
    - Checkout intent creation (the core payment flow)
    - Payment status polling
+   - Test-store scenario checks — trigger KYT rejection / refund / stuck settlement / forwarding failure on demand by picking the `currency` (CNY, AUD, SGD, HKD)
    - Webhook signature verification
    - Response signing (optional)
    - Claim Link Auto-Payout — sending money **out** (payouts / disbursements), including the required **Store Settings → Payout → enable API-Auto-Payout** step and the **14-day auto-refund** your ledger has to expect
